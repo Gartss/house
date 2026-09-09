@@ -4,6 +4,7 @@ const {newProperty,validateState}=require('../lib/model.ts');const {reviewRows,a
 const hash='a'.repeat(64);const prop=(name)=>({...newProperty(),name,images:[hash],suggestedPrice:'155'});
 const base=()=>({properties:[],drafts:[{id:'d1',image:hash,text:'test',properties:[prop('甲小区'),prop('乙小区'),prop('丙小区')]}]});
 (async()=>{
+ const defaultRows=reviewRows(base());assert(defaultRows.every(r=>/^\d{4}-\d{2}-\d{2}$/.test(r.date)),'缺失报价日期默认当天');
  let state=base();let rows=reviewRows(state);assert(rows.every(r=>!r.checked),'不得默认确认');rows[0].checked=rows[1].checked=true;rows[0].date='2026-09-08';rows[2].property.name='丙小区修改';rows[2].date='2026-09-07';rows[2].quoteNote='留作草稿';let next=await applyReview(state,rows,true,async()=>true);assert.equal(next.properties.length,2);assert.equal(next.drafts[0].properties.length,1);assert.equal(next.drafts[0].properties[0].name,'丙小区修改');assert.equal(next.drafts[0].properties[0].suggestedDate,'2026-09-07');assert.equal(next.properties[0].quotes[0].amount,155);assert.equal(state.properties.length,0);assert(validateState(next));
  rows=reviewRows(base());rows[0].checked=rows[1].checked=true;rows[1].amount='-1';await assert.rejects(applyReview(base(),rows,true,async()=>true),/第2行/);rows[1].amount='155';rows[1].date='2026-02-31';await assert.rejects(applyReview(base(),rows,true,async()=>true),/日期无效/);
  state=base();rows=reviewRows(state);rows.forEach(r=>r.checked=true);next=await applyReview(state,rows,true,async()=>true);assert.equal(next.properties.length,3);assert.equal(next.drafts.length,0);

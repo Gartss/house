@@ -1,5 +1,6 @@
 import { fields, HouseState, Property } from './model';
 import { newId } from './id';
+import { localDateValue } from './date';
 export type ReviewRow = {
   draftId: string;
   property: Property;
@@ -15,7 +16,7 @@ export function reviewRows(state: HouseState): ReviewRow[] {
       draftId: d.id,
       property: structuredClone(p),
       amount: p.suggestedPrice || '',
-      date: p.suggestedDate || '',
+      date: p.suggestedDate || localDateValue(),
       quoteNote: p.suggestedQuoteNote || '',
       target: p.suggestedTarget || '',
       checked: false,

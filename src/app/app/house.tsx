@@ -531,6 +531,16 @@ export default function HouseApp() {
       </label>
     </div>
   );
+  const savedEdit = edit
+    ? state.properties.find((property) => property.id === edit.id)
+    : undefined;
+  const hasUnsavedDetailChanges =
+    !!edit &&
+    (!savedEdit ||
+      JSON.stringify(savedEdit) !== JSON.stringify(edit) ||
+      !!price ||
+      !!date ||
+      !!note);
   return (
     <main className="house-shell">
       <div className="utility-bar">
@@ -579,7 +589,8 @@ export default function HouseApp() {
                 variant="ghost"
                 onClick={async () => {
                   if (
-                    (page === 'review' || page === 'detail') &&
+                    (page === 'review' ||
+                      (page === 'detail' && hasUnsavedDetailChanges)) &&
                     !(await ask('返回列表？未保存的修改将放弃。'))
                   )
                     return;
@@ -1109,8 +1120,6 @@ function PropertyTable({
   theme: string;
   onSort: (v: string) => void;
 }) {
-  const [swipedId, setSwipedId] = useState<string | null>(null);
-  const gestureStartX = useRef<number | null>(null);
   return (
     <div className="data-grid mobile-grid">
       <Table>
@@ -1141,7 +1150,6 @@ function PropertyTable({
                 <TableHead>装修 / 电梯</TableHead>
               </>
             )}
-            <TableHead className="swipe-action-head" aria-hidden="true" />
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -1153,25 +1161,8 @@ function PropertyTable({
               p.actualArea,
             );
             return (
-              <TableRow
-                key={p.id}
-                className={swipedId === p.id ? 'swipe-open' : ''}
-                onPointerDown={(e) => {
-                  gestureStartX.current = e.clientX;
-                }}
-                onPointerUp={(e) => {
-                  const start = gestureStartX.current;
-                  gestureStartX.current = null;
-                  if (start === null) return;
-                  const distance = e.clientX - start;
-                  if (distance < -45) setSwipedId(p.id);
-                  else if (distance > 45) setSwipedId(null);
-                }}
-                onPointerCancel={() => {
-                  gestureStartX.current = null;
-                }}
-              >
-                <TableCell className="swipe-name-cell">
+              <TableRow key={p.id}>
+                <TableCell>
                   <div className="name-select">
                     <Checkbox
                       aria-label={`选择${p.name}`}
@@ -1259,19 +1250,6 @@ function PropertyTable({
                     </TableCell>
                   </>
                 )}
-                <TableCell className="swipe-action-cell">
-                  <Button
-                    className="swipe-edit-action"
-                    variant="secondary"
-                    aria-label={`编辑${p.name}`}
-                    onClick={() => {
-                      setSwipedId(null);
-                      onOpen(p);
-                    }}
-                  >
-                    编辑
-                  </Button>
-                </TableCell>
               </TableRow>
             );
           })}

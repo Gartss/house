@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -18,7 +18,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 import { HouseState, fields } from '@/lib/model';
-import { actualAreaSummary, areaSummary } from '@/lib/property-extras';
+import { actualAreaSummary, recognizedAreaTotal } from '@/lib/property-extras';
 import PropertyFieldControl from './property-field-control';
 import { newId } from '@/lib/id';
 import {
@@ -52,9 +52,21 @@ export default function BulkReview({
   const [rows, setRows] = useState(() => reviewRows(state));
   const [working, setWorking] = useState(false);
   const [group, setGroup] = useState('price');
+  const [saveIssue, setSaveIssue] = useState<{
+    message: string;
+    row: number | null;
+  } | null>(null);
   const reuploadInput = useRef<HTMLInputElement>(null);
+  const nameInputs = useRef<Array<HTMLInputElement | null>>([]);
   const disabled = busy || working;
+  useEffect(() => {
+    if (saveIssue?.row === null || saveIssue?.row === undefined) return;
+    const input = nameInputs.current[saveIssue.row];
+    input?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    input?.focus();
+  }, [saveIssue]);
   function change(index: number, patch: Partial<ReviewRow>) {
+    setSaveIssue(null);
     setRows((prev) =>
       prev.map((r, i) => (i === index ? { ...r, ...patch } : r)),
     );
@@ -88,6 +100,7 @@ export default function BulkReview({
   }
   async function saveAll() {
     if (disabled) return;
+    setSaveIssue(null);
     setWorking(true);
     try {
       const next = await applyReview(
@@ -100,7 +113,11 @@ export default function BulkReview({
         onDone();
       }
     } catch (e) {
-      onMessage(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      const missingName = message.match(/^第(\d+)行：请填写小区 \/ 地址$/);
+      const row = missingName ? Number(missingName[1]) - 1 : null;
+      setSaveIssue({ message, row });
+      onMessage('');
     } finally {
       setWorking(false);
     }
@@ -211,10 +228,16 @@ export default function BulkReview({
             重新上传
           </Button>
           <Button disabled={disabled || !rows.length} onClick={saveAll}>
-            保存全部
+            {working ? '保存中…' : '保存全部'}
           </Button>
         </div>
       </div>
+      {saveIssue && (
+        <div className="review-save-error" role="alert">
+          <strong>暂未保存</strong>
+          <span>{saveIssue.message}</span>
+        </div>
+      )}
       <div className="data-grid review-grid">
         <Table>
           <TableHeader>
@@ -234,8 +257,12 @@ export default function BulkReview({
               <TableRow key={r.property.id}>
                 <TableCell className="review-property-name" data-label="房源">
                   <Input
+                    ref={(element) => {
+                      nameInputs.current[i] = element;
+                    }}
                     disabled={disabled}
                     aria-label={`第${i + 1}行房源名`}
+                    aria-invalid={saveIssue?.row === i || undefined}
                     value={r.property.name}
                     placeholder={`未命名房源 ${i + 1}`}
                     onChange={(e) =>
@@ -365,7 +392,14 @@ export default function BulkReview({
                       aria-label={`第${i + 1}行实际面积`}
                       inputMode="decimal"
                       placeholder="实际面积（㎡）"
-                      value={r.property.actualArea || ''}
+                      readOnly={
+                        recognizedAreaTotal(r.property.floorPlan) !== null
+                      }
+                      value={
+                        recognizedAreaTotal(r.property.floorPlan) ??
+                        r.property.actualArea ??
+                        ''
+                      }
                       onChange={(e) =>
                         change(i, {
                           property: {
@@ -400,7 +434,7 @@ export default function BulkReview({
                     )}
                   </div>
                   {r.property.floorPlan ? (
-                    <details>
+                    <details open>
                       <summary>
                         房间面积 · {r.property.floorPlan.rooms.length} 项
                       </summary>
@@ -522,41 +556,6 @@ export default function BulkReview({
                       >
                         补充房间
                       </Button>
-                      <label className="check-label">
-                        <input
-                          type="checkbox"
-                          checked={r.property.floorPlan.confirmed}
-                          onChange={(e) => {
-                            const plan = {
-                              ...r.property.floorPlan!,
-                              confirmed: e.target.checked,
-                            };
-                            if (
-                              e.target.checked &&
-                              !areaSummary(r.property.area, plan)
-                            ) {
-                              onMessage('请核对完整的房间面积');
-                              return;
-                            }
-                            change(i, {
-                              property: { ...r.property, floorPlan: plan },
-                            });
-                          }}
-                        />
-                        已核对全部房间及计入方式
-                      </label>
-                      {r.property.floorPlan.confirmed && (
-                        <p>
-                          {
-                            areaSummary(r.property.area, r.property.floorPlan)
-                              ?.total
-                          }
-                          ㎡ · 得房率{' '}
-                          {areaSummary(r.property.area, r.property.floorPlan)
-                            ?.rate ?? '—'}
-                          %
-                        </p>
-                      )}
                     </details>
                   ) : null}
                 </TableCell>

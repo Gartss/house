@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { HouseState, Property } from '@/lib/model';
 import {
-  areaSummary,
   actualAreaSummary,
+  recognizedAreaTotal,
   parseRooms,
   parseCommunityQuote,
 } from '@/lib/property-extras';
@@ -143,7 +143,7 @@ export default function PropertyExtras({
             confirmed: false,
           },
         });
-        onMessage('请核对房间面积，确认完整后保存房源。');
+        onMessage('已识别房间面积，修改明细会实时更新实际面积。');
       } else {
         const parsed = parseCommunityQuote(result.text);
         const imported = {
@@ -422,10 +422,13 @@ export default function PropertyExtras({
           )}
         </h2>
         <label>
-          手动输入实际面积（㎡）
+          {recognizedAreaTotal(plan) !== null
+            ? '实际面积（按计入的房间实时合计）'
+            : '手动输入实际面积（㎡）'}
           <Input
             inputMode="decimal"
-            value={property.actualArea || ''}
+            readOnly={recognizedAreaTotal(plan) !== null}
+            value={recognizedAreaTotal(plan) ?? property.actualArea ?? ''}
             onChange={(e) =>
               onChange({ ...property, actualArea: e.target.value })
             }
@@ -631,23 +634,9 @@ export default function PropertyExtras({
             >
               添加房间
             </Button>
-            <label className="check-label">
-              <input
-                disabled={disabled}
-                type="checkbox"
-                checked={plan.confirmed}
-                onChange={(e) => {
-                  const next = { ...plan, confirmed: e.target.checked };
-                  if (e.target.checked && !areaSummary(property.area, next)) {
-                    setLocalError('请填写完整、有效的房间面积');
-                    return;
-                  }
-                  onChange({ ...property, floorPlan: next });
-                }}
-              />
-              已核对所有房间及阳台计入方式
-            </label>
-            <p className="secondary">核对后点击页面顶部“保存”。</p>
+            <p className="secondary">
+              修改房间面积或“计入”状态后，实际面积和得房率会立即更新。
+            </p>
           </>
         )}
       </section>

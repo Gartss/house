@@ -675,6 +675,25 @@ summary {
   gap: 16px;
   padding: 12px 2px;
 }
+.review-save-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 11px 13px;
+  border: 1px solid #efb1ad;
+  border-radius: 10px;
+  background: #fff3f2;
+  color: #9f261f;
+  font-size: 14px;
+}
+.review-save-error strong {
+  flex-shrink: 0;
+}
+.review-grid [aria-invalid='true'] {
+  border-color: #c9362e;
+  box-shadow: 0 0 0 2px #c9362e24;
+}
 .check-label {
   display: flex;
   gap: 10px;
@@ -816,55 +835,6 @@ summary {
   overflow-wrap: anywhere;
   min-width: 0;
   cursor: pointer;
-}
-.mobile-grid tr td,
-.mobile-grid tr .name-select {
-  transition: transform 160ms ease;
-}
-.mobile-grid tbody tr {
-  position: relative;
-}
-.swipe-action-cell {
-  display: none;
-}
-.swipe-action-head {
-  position: sticky;
-  right: 0;
-  z-index: 5;
-  background: #edf2f8 !important;
-  width: 0;
-  min-width: 0;
-  padding: 0 !important;
-  overflow: hidden;
-}
-.swipe-edit-action {
-  min-width: 56px;
-  min-height: 38px;
-  padding: 7px 9px;
-  opacity: 0;
-  pointer-events: none;
-}
-.mobile-grid tr.swipe-open td:not(.swipe-action-cell),
-.mobile-grid tr.swipe-open .name-select {
-  transform: translateX(-64px);
-}
-.mobile-grid tr.swipe-open .swipe-action-cell {
-  display: flex;
-  position: absolute;
-  top: 0;
-  right: 0;
-  width: 70px;
-  height: 100%;
-  min-width: 70px;
-  align-items: center;
-  justify-content: center;
-  padding: 8px !important;
-  overflow: visible;
-  background: #fff;
-}
-.mobile-grid tr.swipe-open .swipe-edit-action {
-  opacity: 1;
-  pointer-events: auto;
 }
 .table-meta {
   flex-wrap: wrap;

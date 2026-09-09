@@ -57,9 +57,8 @@ export function actualAreaSummary(
   plan?: FloorPlan,
   manual?: string,
 ) {
-  const parsed = areaSummary(area, plan);
-  if (parsed) return parsed;
-  const total = Number(manual);
+  const recognized = recognizedAreaTotal(plan);
+  const total = recognized ?? Number(manual);
   if (!Number.isFinite(total) || total <= 0) return null;
   return {
     total: Number(total.toFixed(2)),
@@ -68,6 +67,16 @@ export function actualAreaSummary(
         ? Number(((total / Number(area)) * 100).toFixed(2))
         : null,
   };
+}
+export function recognizedAreaTotal(plan?: FloorPlan) {
+  if (!plan?.rooms.length) return null;
+  const rooms = plan.rooms.filter((r) => r.included);
+  if (
+    !rooms.length ||
+    rooms.some((r) => !Number.isFinite(Number(r.area)) || Number(r.area) <= 0)
+  )
+    return null;
+  return Number(rooms.reduce((sum, r) => sum + Number(r.area), 0).toFixed(2));
 }
 export function parseRooms(text: string): RoomArea[] {
   const clean = text.replace(/[ \t]/g, '');
