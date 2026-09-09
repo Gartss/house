@@ -1,0 +1,3 @@
+import { env } from 'cloudflare:workers';
+import { getChatGPTUser } from '../../../chatgpt-auth';
+export async function GET(_req:Request,{params}:{params:Promise<{id:string}>}){const u=await getChatGPTUser();if(!u)return new Response('请先登录',{status:401});const {id}=await params;if(!/^[a-f0-9]{64}$/.test(id))return new Response('未找到图片',{status:404});const obj=await env.FILES.get(`${u.userId}/${id}`);if(!obj)return new Response('未找到图片',{status:404});return new Response(obj.body,{headers:{'Content-Type':obj.httpMetadata?.contentType||'application/octet-stream','Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'}});}

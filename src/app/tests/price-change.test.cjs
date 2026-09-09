@@ -1,0 +1,12 @@
+const ts=require('typescript'),fs=require('fs'),assert=require('node:assert/strict');
+require.extensions['.ts']=(m,p)=>m._compile(ts.transpileModule(fs.readFileSync(p,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,p);
+const {priceSummary}=require('../lib/price-change.ts');
+const q=(id,amount,date,extra={})=>({id,amount,date,createdAt:date+'T00:00:00Z',note:'',...extra});
+const p={area:'50',unitPrice:'50000',quotes:[q('new',290,'2026-09-08'),q('old',300,'2026-08-08')]};
+assert.equal(priceSummary(p).totalDelta,-10);assert.equal(priceSummary(p).unitDelta,-2000);assert.equal(priceSummary(p).unit,58000);
+assert.equal(priceSummary({...p,quotes:[q('old',280,'2026-08-08'),p.quotes[0]]}).totalDelta,10);
+assert.equal(priceSummary({...p,quotes:[p.quotes[0]]}).totalDelta,null);
+assert.equal(priceSummary({...p,area:''}).unitDelta,null);assert.equal(priceSummary({...p,area:''}).unit,50000);
+assert.equal(priceSummary({...p,quotes:[...p.quotes,q('fix',295,'2026-09-08',{supersedes:'new'})]}).totalDelta,-5);
+assert.equal(priceSummary({...p,quotes:[q('a',300,'2026-08-08'),q('b',300,'2026-09-08')]}).totalDelta,0);
+console.log('PASS: rises, falls, unchanged, missing history/area, chronological ordering and corrected quotes.');

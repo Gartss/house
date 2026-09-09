@@ -1,0 +1,13 @@
+const ts=require('typescript'),fs=require('fs'),assert=require('node:assert/strict');
+require.extensions['.ts']=(m,p)=>m._compile(ts.transpileModule(fs.readFileSync(p,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,p);
+const {validTransition}=require('../lib/state-transition.ts');
+const q={id:'q',amount:100,date:'2026-09-08',createdAt:'today',note:''};
+const previous={properties:[{id:'a',quotes:[q]},{id:'b',quotes:[q]}],drafts:[]};
+const remaining={properties:[previous.properties[1]],drafts:[]};
+assert(!validTransition(previous,remaining));assert(validTransition(previous,remaining,['a']));
+assert(!validTransition(previous,remaining,['b']));assert(!validTransition(previous,remaining,['a','a']));assert(!validTransition(previous,remaining,'a'));
+assert(validTransition(previous,{properties:[{id:'b',quotes:[]}],drafts:[]},['a']));
+assert(!validTransition(previous,{properties:[{id:'b',quotes:[{...q,amount:90}]}],drafts:[]},['a']));
+assert(validTransition(previous,{properties:[{id:'b',quotes:[q,{...q,id:'q2',amount:90}]}],drafts:[]},['a']));
+assert(validTransition(previous,{properties:[],drafts:[]},['a','b']));assert(validTransition(previous,previous));
+console.log('PASS: explicit single/batch deletion; missing/invalid deletion intent rejected; retained history protected; append remains valid.');

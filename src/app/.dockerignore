@@ -1,0 +1,9 @@
+node_modules
+.next
+.wrangler
+work
+tests
+._*
+**/._*
+.DS_Store
+**/.DS_Store

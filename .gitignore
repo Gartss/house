@@ -1,0 +1,29 @@
+# Local and generated project data
+/data/
+/assets/screenshots/
+/outputs/
+/work/
+/.wrangler/
+
+# Local app runtime and build output
+/src/app/node_modules/
+/src/app/dist/
+/src/app/.next/
+/src/app/.vinext/
+/src/app/.wrangler/
+/src/app/tsconfig.tsbuildinfo
+
+# Local secrets and OS files
+.env
+.env.*
+!.env.example
+*.pem
+.DS_Store
+**/.DS_Store
+._*
+**/._*
+
+# Logs and local caches
+*.log
+npm-debug.log*
+coverage/
