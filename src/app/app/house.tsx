@@ -275,7 +275,9 @@ export default function HouseApp() {
           const properties = parseScreenshot(text, id);
           if (
             properties.length === 1 &&
-            (!properties[0].area || Number(properties[0].area) < 10)
+            ((!properties[0].area || Number(properties[0].area) < 10) ||
+              (!properties[0].lift && /电梯/.test(text)) ||
+              (!properties[0].layout && /(?:户型|室[\s\S]*厅)/.test(text)))
           ) {
             try {
               await worker.setParameters({

@@ -10,4 +10,6 @@ const semantic=parseScreenshot('核验信息\n朝向：南北\n房源核验码 2
 assert.equal(parseScreenshot('低楼层\n建面 50㎡','x',now)[0].floor,'低楼层');assert.equal(parseScreenshot('高楼层/共6层\n面积50㎡','x',now)[0].floor,'高楼层/共6层');
 assert.equal(parseScreenshot('售价 户型 建筑 面积\n189万 1室1厅 5O.15rr','x',now)[0].area,'50.15');
 assert.equal(parseScreenshot('155万 1室1厅 9.57m²\n小区：梅陇二村（闵行：梅陇）','x',now)[0].area,'');
+assert.equal(parseScreenshot('电梯：无','x',now)[0].lift,'否');
+assert.equal(parseScreenshot('2 室 ] 厅 1 了\n户型','x',now)[0].layout,'2室1厅1卫');
 console.log('PASS: current screenshot four cards; grouped unit prices; slash/unit variants; no price crossing; discount excluded; unknown layout/date preserved.');

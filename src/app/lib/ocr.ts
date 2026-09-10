@@ -32,6 +32,19 @@ function floorValue(text: string) {
     )?.[0] || ''
   );
 }
+function layoutValue(text: string) {
+  const repaired = text
+    // Tesseract commonly reads the narrow digit 1 as a bracket or vertical bar.
+    .replace(/(\d+)室[\]】丨|Il]厅/g, '$1室1厅')
+    // In this field layout, the final 卫 is sometimes reduced to 了.
+    .replace(/(\d+厅\d+)了/g, '$1卫');
+  return repaired.match(/\d+室\d+厅(?:\d+卫)?/)?.[0] || '';
+}
+function liftValue(text: string) {
+  if (/(?:无电梯|电梯[:：]?\s*无)/.test(text)) return '否';
+  if (/(?:有电梯|电梯[:：]?\s*有)/.test(text)) return '是';
+  return '';
+}
 function quoteDate(text: string, now: Date) {
   const full = text.match(
     /(?:^|[^\d])(20\d{2})[年/.-](\d{1,2})[月/.-](\d{1,2})日?/,
@@ -85,7 +98,7 @@ function semanticArea(text: string) {
   return plausibleArea(text.match(areaPattern)?.[1] || '');
 }
 function applySemanticFields(p: Property, text: string, now: Date) {
-  p.layout = text.match(/\d+室\d+厅(?:\d+卫)?/)?.[0] || p.layout;
+  p.layout = layoutValue(text) || p.layout;
   p.area = semanticArea(text) || p.area;
   p.year =
     text.match(
@@ -100,11 +113,7 @@ function applySemanticFields(p: Property, text: string, now: Date) {
       ?.slice(1)
       .find(Boolean) || p.direction;
   p.decoration = text.match(/(?:精装|简装|毛坯)/)?.[0] || p.decoration;
-  p.lift = text.includes('无电梯')
-    ? '否'
-    : text.includes('有电梯')
-      ? '是'
-      : p.lift;
+  p.lift = liftValue(text) || p.lift;
   p.code = text.match(/房源核验码[:：]?(\d+)/)?.[1] || p.code;
   p.suggestedPrice =
     text.split('\n').map(amount).find(Boolean) || p.suggestedPrice;
@@ -137,7 +146,7 @@ export function parseScreenshot(
     if (!m) continue;
     const p = newProperty();
     p.images = [image];
-    p.layout = line.match(/\d+室\d+厅/)?.[0] || '';
+    p.layout = layoutValue(line);
     p.area = plausibleArea(m[1]);
     p.direction = m[2];
     p.name = m[3].replace(/(?:地图|对比|近\d+天).*$/, '').trim();
