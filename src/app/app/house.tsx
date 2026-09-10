@@ -65,6 +65,7 @@ import {
   Search,
   MoreHorizontal,
   House as HouseIcon,
+  SlidersHorizontal,
 } from 'lucide-react';
 const copy = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 export default function HouseApp() {
@@ -279,7 +280,10 @@ export default function HouseApp() {
       try {
         for (const [index, file] of fileList.entries()) {
           currentFileIndex = index;
-          updateImportProgress(0.02, `正在上传第 ${index + 1}/${totalFiles} 张`);
+          updateImportProgress(
+            0.02,
+            `正在上传第 ${index + 1}/${totalFiles} 张`,
+          );
           if (file.size > 12 * 1024 * 1024) throw Error('图片需小于12MB');
           const r = await fetch('/api/images', {
             method: 'POST',
@@ -287,7 +291,10 @@ export default function HouseApp() {
             body: file,
           });
           if (!r.ok) throw Error(await r.text());
-          updateImportProgress(0.08, `正在读取第 ${index + 1}/${totalFiles} 张`);
+          updateImportProgress(
+            0.08,
+            `正在读取第 ${index + 1}/${totalFiles} 张`,
+          );
           const { id } = (await r.json()) as { id: string };
           const existingDraftIndex = next.drafts.findIndex(
             (draft) => draft.image === id,
@@ -304,7 +311,10 @@ export default function HouseApp() {
             phaseStart = 0.1;
             phaseSpan = 0.55;
             text = (await worker.recognize(file)).data.text;
-            updateImportProgress(0.65, `已识别第 ${index + 1}/${totalFiles} 张`);
+            updateImportProgress(
+              0.65,
+              `已识别第 ${index + 1}/${totalFiles} 张`,
+            );
           } catch {
             setErrorMessage('识别未完成，已保留原图，可手动填写。');
           }
@@ -312,7 +322,8 @@ export default function HouseApp() {
           const properties = parseScreenshot(text, id);
           if (
             properties.length === 1 &&
-            ((!properties[0].area || Number(properties[0].area) < 10) ||
+            (!properties[0].area ||
+              Number(properties[0].area) < 10 ||
               (!properties[0].lift && /电梯/.test(text)) ||
               (!properties[0].layout && /(?:户型|室[\s\S]*厅)/.test(text)))
           ) {
@@ -642,9 +653,25 @@ export default function HouseApp() {
       !!price ||
       !!date ||
       !!note);
+  const activeFilterCount = [
+    maxPrice,
+    minUnit,
+    maxUnit,
+    minArea,
+    maxArea,
+    layoutFilter,
+    regionFilter,
+    districtFilter,
+  ].filter(Boolean).length;
   return (
     <main className="house-shell">
       <div className="utility-bar">
+        <div className="home-heading">
+          <h1>我的房源</h1>
+          {ready && page === 'list' && (
+            <span>{state.properties.length} 套</span>
+          )}
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger
             render={<Button variant="ghost" aria-label="更多操作" />}
@@ -745,190 +772,200 @@ export default function HouseApp() {
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </div>
-              <div className="chips">
-                {[
-                  ['', '默认'],
-                  ['price', '总价↑'],
-                  ['area', '面积↑'],
-                  ['unit', '单价↑'],
-                  ['date', '最新报价'],
-                ].map(([value, label]) => (
-                  <Button
-                    key={value}
-                    variant={sort === value ? 'default' : 'outline'}
-                    onClick={() => setSort(value)}
+              <div className="list-controls">
+                <label className="sort-control">
+                  <span>排序</span>
+                  <select
+                    aria-label="房源排序"
+                    value={sort}
+                    onChange={(event) => setSort(event.target.value)}
                   >
-                    {label}
-                  </Button>
-                ))}
-              </div>
-              <details className="filter-panel">
-                <summary>筛选</summary>
-                <div className="compact-filters">
-                  <label>
-                    区域
-                    <select
-                      className="location-select"
-                      value={regionFilter}
-                      onChange={(e) => {
-                        setRegionFilter(e.target.value);
+                    <option value="">默认顺序</option>
+                    <option value="price">总价从低到高</option>
+                    <option value="area">面积从小到大</option>
+                    <option value="unit">单价从低到高</option>
+                    <option value="date">最近报价优先</option>
+                  </select>
+                </label>
+                <details className="filter-panel">
+                  <summary>
+                    <SlidersHorizontal size={17} />
+                    筛选
+                    {activeFilterCount > 0 && (
+                      <span className="filter-count">{activeFilterCount}</span>
+                    )}
+                  </summary>
+                  <div className="filter-fields">
+                    <div className="compact-filters">
+                      <label>
+                        区域
+                        <select
+                          className="location-select"
+                          value={regionFilter}
+                          onChange={(e) => {
+                            setRegionFilter(e.target.value);
+                            setDistrictFilter('');
+                          }}
+                        >
+                          <option value="">全部区域</option>
+                          {Array.from(
+                            new Set(
+                              state.properties
+                                .map((p) => p.region)
+                                .filter(Boolean),
+                            ),
+                          )
+                            .sort()
+                            .map((v) => (
+                              <option key={v} value={v}>
+                                {v}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label>
+                        板块
+                        <select
+                          className="location-select"
+                          value={districtFilter}
+                          onChange={(e) => setDistrictFilter(e.target.value)}
+                        >
+                          <option value="">全部板块</option>
+                          {Array.from(
+                            new Set(
+                              state.properties
+                                .filter(
+                                  (p) =>
+                                    !regionFilter || p.region === regionFilter,
+                                )
+                                .map((p) => p.district)
+                                .filter(Boolean),
+                            ),
+                          )
+                            .sort()
+                            .map((v) => (
+                              <option key={v} value={v}>
+                                {v}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label>
+                        总价上限（万元）
+                        <Input
+                          inputMode="decimal"
+                          value={maxPrice}
+                          onChange={(e) => setMaxPrice(e.target.value)}
+                        />
+                      </label>
+                      <div className="range-filter">
+                        <span>面积（㎡）</span>
+                        <div className="range-inputs">
+                          <Input
+                            aria-label="最小面积"
+                            placeholder="最低"
+                            type="number"
+                            min="0"
+                            inputMode="decimal"
+                            value={minArea}
+                            onChange={(e) => setMinArea(e.target.value)}
+                          />
+                          <span>−</span>
+                          <Input
+                            aria-label="最大面积"
+                            placeholder="最高"
+                            type="number"
+                            min="0"
+                            inputMode="decimal"
+                            value={maxArea}
+                            onChange={(e) => setMaxArea(e.target.value)}
+                          />
+                        </div>
+                        {minArea &&
+                          maxArea &&
+                          Number(minArea) > Number(maxArea) && (
+                            <ErrorNotice compact>
+                              最低面积不能大于最高面积
+                            </ErrorNotice>
+                          )}
+                      </div>
+                      <div className="range-filter">
+                        <span>单价（元/㎡）</span>
+                        <div className="range-inputs">
+                          <Input
+                            aria-label="最低单价"
+                            placeholder="最低"
+                            type="number"
+                            min="0"
+                            inputMode="decimal"
+                            value={minUnit}
+                            onChange={(e) => setMinUnit(e.target.value)}
+                          />
+                          <span>−</span>
+                          <Input
+                            aria-label="最高单价"
+                            placeholder="最高"
+                            type="number"
+                            min="0"
+                            inputMode="decimal"
+                            value={maxUnit}
+                            onChange={(e) => setMaxUnit(e.target.value)}
+                          />
+                        </div>
+                        {minUnit &&
+                          maxUnit &&
+                          Number(minUnit) > Number(maxUnit) && (
+                            <ErrorNotice compact>
+                              最低单价不能大于最高单价
+                            </ErrorNotice>
+                          )}
+                      </div>
+                      <label>
+                        户型
+                        <select
+                          className="location-select"
+                          value={layoutFilter}
+                          onChange={(e) => setLayoutFilter(e.target.value)}
+                        >
+                          <option value="">全部户型</option>
+                          {Array.from(
+                            new Set(
+                              state.properties
+                                .map((p) => p.layout.replace(/\s/g, ''))
+                                .filter(Boolean),
+                            ),
+                          )
+                            .sort((a, b) =>
+                              a.localeCompare(b, 'zh-CN', { numeric: true }),
+                            )
+                            .map((v) => (
+                              <option key={v} value={v}>
+                                {v}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setQuery('');
+                        setMaxPrice('');
+                        setMinUnit('');
+                        setMaxUnit('');
+                        setMinArea('');
+                        setMaxArea('');
+                        setLayoutFilter('');
+                        setRegionFilter('');
                         setDistrictFilter('');
+                        setSort('');
                       }}
                     >
-                      <option value="">全部区域</option>
-                      {Array.from(
-                        new Set(
-                          state.properties.map((p) => p.region).filter(Boolean),
-                        ),
-                      )
-                        .sort()
-                        .map((v) => (
-                          <option key={v} value={v}>
-                            {v}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label>
-                    板块
-                    <select
-                      className="location-select"
-                      value={districtFilter}
-                      onChange={(e) => setDistrictFilter(e.target.value)}
-                    >
-                      <option value="">全部板块</option>
-                      {Array.from(
-                        new Set(
-                          state.properties
-                            .filter(
-                              (p) => !regionFilter || p.region === regionFilter,
-                            )
-                            .map((p) => p.district)
-                            .filter(Boolean),
-                        ),
-                      )
-                        .sort()
-                        .map((v) => (
-                          <option key={v} value={v}>
-                            {v}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <label>
-                    总价上限（万元）
-                    <Input
-                      inputMode="decimal"
-                      value={maxPrice}
-                      onChange={(e) => setMaxPrice(e.target.value)}
-                    />
-                  </label>
-                  <div className="range-filter">
-                    <span>面积（㎡）</span>
-                    <div className="range-inputs">
-                      <Input
-                        aria-label="最小面积"
-                        placeholder="最低"
-                        type="number"
-                        min="0"
-                        inputMode="decimal"
-                        value={minArea}
-                        onChange={(e) => setMinArea(e.target.value)}
-                      />
-                      <span>−</span>
-                      <Input
-                        aria-label="最大面积"
-                        placeholder="最高"
-                        type="number"
-                        min="0"
-                        inputMode="decimal"
-                        value={maxArea}
-                        onChange={(e) => setMaxArea(e.target.value)}
-                      />
-                    </div>
-                    {minArea &&
-                      maxArea &&
-                      Number(minArea) > Number(maxArea) && (
-                        <ErrorNotice compact>
-                          最低面积不能大于最高面积
-                        </ErrorNotice>
-                      )}
+                      清除筛选
+                    </Button>
                   </div>
-                  <div className="range-filter">
-                    <span>单价（元/㎡）</span>
-                    <div className="range-inputs">
-                      <Input
-                        aria-label="最低单价"
-                        placeholder="最低"
-                        type="number"
-                        min="0"
-                        inputMode="decimal"
-                        value={minUnit}
-                        onChange={(e) => setMinUnit(e.target.value)}
-                      />
-                      <span>−</span>
-                      <Input
-                        aria-label="最高单价"
-                        placeholder="最高"
-                        type="number"
-                        min="0"
-                        inputMode="decimal"
-                        value={maxUnit}
-                        onChange={(e) => setMaxUnit(e.target.value)}
-                      />
-                    </div>
-                    {minUnit &&
-                      maxUnit &&
-                      Number(minUnit) > Number(maxUnit) && (
-                        <ErrorNotice compact>
-                          最低单价不能大于最高单价
-                        </ErrorNotice>
-                      )}
-                  </div>
-                  <label>
-                    户型
-                    <select
-                      className="location-select"
-                      value={layoutFilter}
-                      onChange={(e) => setLayoutFilter(e.target.value)}
-                    >
-                      <option value="">全部户型</option>
-                      {Array.from(
-                        new Set(
-                          state.properties
-                            .map((p) => p.layout.replace(/\s/g, ''))
-                            .filter(Boolean),
-                        ),
-                      )
-                        .sort((a, b) =>
-                          a.localeCompare(b, 'zh-CN', { numeric: true }),
-                        )
-                        .map((v) => (
-                          <option key={v} value={v}>
-                            {v}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setQuery('');
-                    setMaxPrice('');
-                    setMinUnit('');
-                    setMaxUnit('');
-                    setMinArea('');
-                    setMaxArea('');
-                    setLayoutFilter('');
-                    setRegionFilter('');
-                    setDistrictFilter('');
-                    setSort('');
-                  }}
-                >
-                  清除筛选
-                </Button>
-              </details>
+                </details>
+              </div>
               {state.drafts.length > 0 && (
                 <button
                   className="review-entry"
