@@ -908,6 +908,9 @@ summary {
 .comparison .panel {
   padding: 14px;
 }
+.community-trend + .community-trend {
+  margin-top: 18px;
+}
 .review-tools {
   flex-wrap: wrap;
 }

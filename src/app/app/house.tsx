@@ -34,7 +34,15 @@ import {
 import PropertyFieldControl from './property-field-control';
 import { priceSummary } from '@/lib/price-change';
 import PropertyExtras from './property-extras';
-import { actualAreaSummary, areaSummary } from '@/lib/property-extras';
+import {
+  actualAreaSummary,
+  communityForProperty,
+  Community,
+} from '@/lib/property-extras';
+import {
+  mergeImportedDrafts,
+  mergePropertyInformation,
+} from '@/lib/property-match';
 import { newId } from '@/lib/id';
 import {
   LOCATION_DATA,
@@ -226,7 +234,7 @@ export default function HouseApp() {
     setBusy(true);
     let next = copy(state);
     try {
-      const { createWorker } = await import('tesseract.js');
+      const { createWorker, PSM } = await import('tesseract.js');
       const worker = await createWorker('chi_sim', 1, {
         workerPath: '/ocr/worker.min.js',
         corePath: '/ocr',
@@ -265,6 +273,42 @@ export default function HouseApp() {
           }
           const { parseScreenshot } = await import('@/lib/ocr');
           const properties = parseScreenshot(text, id);
+          if (
+            properties.length === 1 &&
+            (!properties[0].area || Number(properties[0].area) < 10)
+          ) {
+            try {
+              await worker.setParameters({
+                tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
+              });
+              const retryText = (await worker.recognize(file)).data.text;
+              await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
+              const retry = parseScreenshot(retryText, id);
+              if (retry.length === 1) {
+                if (Number(retry[0].area) >= 10)
+                  properties[0].area = retry[0].area;
+                properties[0] = mergePropertyInformation(
+                  properties[0],
+                  retry[0],
+                );
+                text = `${text}\n${retryText}`.slice(0, 50000);
+              }
+              if (!properties[0].area) {
+                await worker.setParameters({
+                  tessedit_pageseg_mode: PSM.SPARSE_TEXT,
+                });
+                const { recognizeBuildingArea } =
+                  await import('@/lib/building-area-ocr');
+                const focused = await recognizeBuildingArea(worker, file, id);
+                if (focused.area) properties[0].area = focused.area;
+                if (focused.text)
+                  text = `${text}\n${focused.text}`.slice(0, 50000);
+                await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
+              }
+            } catch {
+              await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
+            }
+          }
           if (properties.length === 1) {
             try {
               const { recognizeFloorPlan } =
@@ -291,6 +335,7 @@ export default function HouseApp() {
           if (existingDraftIndex >= 0) next.drafts[existingDraftIndex] = draft;
           else next.drafts.push(draft);
         }
+        next = mergeImportedDrafts(next);
       } finally {
         await worker.terminate();
       }
@@ -1270,6 +1315,14 @@ function Comparison({
   const [different, setDifferent] = useState(false);
   const [metric, setMetric] = useState('total');
   if (properties.length < 2) return <p>请至少选择两套房源进行对比。</p>;
+  const communities = Array.from(
+    new Map(
+      properties
+        .map((property) => communityForProperty(state, property))
+        .filter((community): community is Community => !!community)
+        .map((community) => [community.id, community]),
+    ).values(),
+  );
   const rows = [
     {
       label: '实际面积（㎡）',
@@ -1289,8 +1342,7 @@ function Comparison({
     {
       label: '小区成交价',
       values: properties.map((p) => {
-        const q = state.communities
-          ?.find((c) => c.id === p.communityId)
+        const q = communityForProperty(state, p)
           ?.quotes.slice()
           .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
         return q
@@ -1402,15 +1454,66 @@ function Comparison({
         </div>
         <CompareChart properties={properties} metric={metric} />
       </section>
+      {communities.some((community) => community.quotes.length) && (
+        <section className="panel">
+          <h2>小区成交价走势</h2>
+          <p className="secondary">
+            同一小区只显示一次，共 {communities.length} 个关联小区。
+          </p>
+          {(['万元', '元/㎡'] as const).map((unit) => {
+            const series = communities
+              .map((community) => communityAsProperty(community, unit))
+              .filter((property) => property.quotes.length);
+            return series.length ? (
+              <div className="community-trend" key={unit}>
+                <CompareChart
+                  properties={series}
+                  metric="total"
+                  unitLabel={unit}
+                  emptyText="暂无带日期的小区成交价"
+                />
+              </div>
+            ) : null;
+          })}
+        </section>
+      )}
     </section>
   );
+}
+function communityPeriod(value: string) {
+  const match = value.match(/(20\d{2})[年/.-](\d{1,2})(?:[月/.-](\d{1,2}))?/);
+  if (!match) return '';
+  return `${match[1]}-${match[2].padStart(2, '0')}-${(match[3] || '01').padStart(2, '0')}`;
+}
+function communityAsProperty(
+  community: Community,
+  unit: '万元' | '元/㎡',
+): Property {
+  return {
+    ...newProperty(),
+    id: community.id,
+    name: community.name,
+    quotes: community.quotes
+      .filter((quote) => quote.unit === unit && communityPeriod(quote.period))
+      .map((quote) => ({
+        id: quote.id,
+        amount: quote.amount,
+        date: communityPeriod(quote.period),
+        createdAt: quote.createdAt,
+        note: quote.kind,
+      })),
+  };
 }
 function CompareChart({
   properties,
   metric,
+  unitLabel,
+  emptyText = '暂无走势数据',
 }: {
   properties: Property[];
   metric: string;
+  unitLabel?: string;
+  emptyText?: string;
 }) {
   const [picked, setPicked] = useState<number | null>(null);
   const palette = [
@@ -1426,7 +1529,7 @@ function CompareChart({
     name: p.name,
     color: palette[i % palette.length],
     points: activeQuotes(p)
-      .filter((q) => metric === 'total' || Number(p.area) > 0)
+      .filter(() => metric === 'total' || Number(p.area) > 0)
       .sort(
         (a, b) =>
           a.date.localeCompare(b.date) ||
@@ -1441,7 +1544,7 @@ function CompareChart({
       })),
   }));
   const all = series.flatMap((s) => s.points);
-  if (!all.length) return <p className="secondary">暂无走势数据</p>;
+  if (!all.length) return <p className="secondary">{emptyText}</p>;
   const dates = Array.from(new Set(all.map((q) => q.time))).sort(
     (a, b) => a - b,
   );
@@ -1474,7 +1577,9 @@ function CompareChart({
   return (
     <div className="price-chart">
       <div className="chart-topline">
-        <span>{metric === 'total' ? '总价 · 万元' : '单价 · 元/㎡'}</span>
+        <span>
+          {unitLabel || (metric === 'total' ? '总价 · 万元' : '单价 · 元/㎡')}
+        </span>
         <span>
           {hasDatedPoint
             ? `${dateLabel(dates[0]).slice(0, 7)} — ${dateLabel(dates[dates.length - 1]).slice(0, 7)}`

@@ -1,4 +1,5 @@
 import { newId } from './id';
+import type { HouseState, Property } from './model';
 
 export type RoomArea = {
   id: string;
@@ -27,6 +28,24 @@ export type Community = {
   region: string;
   quotes: CommunityQuote[];
 };
+const normalizedCommunityName = (value: string) =>
+  value.toLowerCase().replace(/[\s·•,，.。/\\()（）_-]/g, '');
+export function communityForProperty(state: HouseState, property: Property) {
+  const linked = state.communities?.find(
+    (community: Community) => community.id === property.communityId,
+  );
+  if (linked) return linked as Community;
+  if (!property.name?.trim()) return undefined;
+  const matches = (state.communities || []).filter(
+    (community: Community) =>
+      normalizedCommunityName(community.name) ===
+        normalizedCommunityName(property.name) &&
+      (!community.region ||
+        !property.region ||
+        community.region === property.region),
+  );
+  return matches.length === 1 ? (matches[0] as Community) : undefined;
+}
 export function areaSummary(area: string, plan?: FloorPlan) {
   if (!plan?.confirmed || !plan.rooms.length) return null;
   const rooms = plan.rooms.filter((r) => r.included);

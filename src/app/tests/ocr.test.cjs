@@ -8,4 +8,6 @@ const absent=parseScreenshot('2室1厅/50㎡/南/甲小区\n昨天降价3万\n1�
 const detail=parseScreenshot('房源位置好\n169万 2室1厅 59.27m²\n闵行：梅陇》\n普通住宅 1996年\n南北朝向 无电梯','x');assert.equal(detail[0].region,'闵行区');assert.equal(detail[0].district,'梅陇');
 const semantic=parseScreenshot('核验信息\n朝向：南北\n房源核验码 202610893796\n楼层：中楼层\n建筑面积：59.27㎡\n单价：2.9万元/平\n总价：169万\n户型：2室1厅\n装修：简装\n建成年份：1996年\n无电梯\n2026年9月8日','x',now)[0];assert.equal(semantic.floor,'中楼层');assert.equal(semantic.area,'59.27');assert.equal(semantic.unitPrice,'29000');assert.equal(semantic.suggestedPrice,'169');assert.equal(semantic.layout,'2室1厅');assert.equal(semantic.direction,'南北');assert.equal(semantic.decoration,'简装');assert.equal(semantic.year,'1996');assert.equal(semantic.lift,'否');assert.equal(semantic.code,'202610893796');assert.equal(semantic.suggestedDate,'2026-09-08');
 assert.equal(parseScreenshot('低楼层\n建面 50㎡','x',now)[0].floor,'低楼层');assert.equal(parseScreenshot('高楼层/共6层\n面积50㎡','x',now)[0].floor,'高楼层/共6层');
+assert.equal(parseScreenshot('售价 户型 建筑 面积\n189万 1室1厅 5O.15rr','x',now)[0].area,'50.15');
+assert.equal(parseScreenshot('155万 1室1厅 9.57m²\n小区：梅陇二村（闵行：梅陇）','x',now)[0].area,'');
 console.log('PASS: current screenshot four cards; grouped unit prices; slash/unit variants; no price crossing; discount excluded; unknown layout/date preserved.');

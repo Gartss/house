@@ -9,7 +9,11 @@ const normalize = (text: string) =>
     .replace(/[，]/g, ',')
     .replace(/[。．]/g, '.')
     .replace(/平方米|平米/g, '㎡');
-const areaPattern = /(\d+(?:\.\d+)?)(?:㎡|m(?:[iI²2]|\^2)?)/i;
+const areaPattern = /(\d+(?:\.\d+)?)(?:㎡|m(?:[iI²2]|\^2)?|r[rn](?:[iI²2])?)/i;
+const plausibleArea = (value: string) => {
+  const number = Number(value);
+  return number >= 10 && number <= 1000 ? value : '';
+};
 function amount(line: string) {
   if (
     /降价|涨价|首付|月供|租金|单价|万元?\/(?:平|㎡|m)|万\/月|元\/月/i.test(line)
@@ -30,7 +34,7 @@ function floorValue(text: string) {
 }
 function quoteDate(text: string, now: Date) {
   const full = text.match(
-    /(?:^|[^\d])(20\d{2})[年/.\-](\d{1,2})[月/.\-](\d{1,2})日?/,
+    /(?:^|[^\d])(20\d{2})[年/.-](\d{1,2})[月/.-](\d{1,2})日?/,
   );
   const partial = text.match(/(?:^|[^\d])(\d{1,2})月(\d{1,2})日/);
   const parts = full
@@ -61,13 +65,24 @@ function locationValue(text: string) {
   return null;
 }
 function semanticArea(text: string) {
-  return (
+  const labeled = text.match(
+    /(?:建筑面积|建面|产证面积|面积)[:：]?[^\dOoIlS\n]{0,12}([\dOoIlS]+(?:[.,][\dOoIlS]+)?)(?:㎡|m(?:[iI²2]|\^2)?|r[rn](?:[iI²2])?)?(?![\dOoIlS.,万])/i,
+  )?.[1];
+  const tolerant =
+    labeled ||
     text.match(
-      /(?:建筑面积|建面|产证面积|面积)[:：]?[^\d]{0,8}(\d+(?:\.\d+)?)\s*(?:㎡|m(?:[iI²2]|\^2)?)/i,
-    )?.[1] ||
-    text.match(areaPattern)?.[1] ||
-    ''
-  );
+      /([\dOoIlS]+(?:[.,][\dOoIlS]+)?)(?:㎡|m(?:[iI²2]|\^2)?|r[rn](?:[iI²2])?)/i,
+    )?.[1];
+  if (tolerant) {
+    const repaired = tolerant
+      .replace(/[Oo]/g, '0')
+      .replace(/[Il]/g, '1')
+      .replace(/S/g, '5')
+      .replace(',', '.');
+    const value = Number(repaired);
+    if (value >= 10 && value <= 1000) return repaired;
+  }
+  return plausibleArea(text.match(areaPattern)?.[1] || '');
 }
 function applySemanticFields(p: Property, text: string, now: Date) {
   p.layout = text.match(/\d+室\d+厅(?:\d+卫)?/)?.[0] || p.layout;
@@ -123,7 +138,7 @@ export function parseScreenshot(
     const p = newProperty();
     p.images = [image];
     p.layout = line.match(/\d+室\d+厅/)?.[0] || '';
-    p.area = m[1];
+    p.area = plausibleArea(m[1]);
     p.direction = m[2];
     p.name = m[3].replace(/(?:地图|对比|近\d+天).*$/, '').trim();
     const end = anchors[n + 1]?.index ?? lines.length;

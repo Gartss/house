@@ -8,6 +8,7 @@ import {
   recognizedAreaTotal,
   parseRooms,
   parseCommunityQuote,
+  communityForProperty,
 } from '@/lib/property-extras';
 import { newId } from '@/lib/id';
 async function readImage(
@@ -112,9 +113,7 @@ export default function PropertyExtras({
   const [localError, setLocalError] = useState('');
   const [previewPhoto, setPreviewPhoto] = useState<string | null>(null);
   const disabled = busy || working;
-  const community = state.communities?.find(
-    (c) => c.id === property.communityId,
-  );
+  const community = communityForProperty(state, property);
   const plan = property.floorPlan;
   const summary = actualAreaSummary(property.area, plan, property.actualArea);
   async function importFile(
@@ -204,9 +203,7 @@ export default function PropertyExtras({
       return;
     }
     const next = structuredClone(state);
-    const target = property.communityId
-      ? next.communities?.find((c) => c.id === property.communityId)
-      : undefined;
+    const target = communityForProperty(next, property);
     const current = target || {
       id: newId(),
       name: property.name.trim(),
@@ -238,6 +235,17 @@ export default function PropertyExtras({
       kind: '成交价',
       createdAt: new Date().toISOString(),
     });
+    for (const candidate of next.properties) {
+      const sameName =
+        candidate.name.trim().replace(/\s/g, '') ===
+        property.name.trim().replace(/\s/g, '');
+      const sameRegion =
+        !candidate.region ||
+        !property.region ||
+        candidate.region === property.region;
+      if (candidate.id === property.id || (sameName && sameRegion))
+        candidate.communityId = current.id;
+    }
     if (await onSave(next)) {
       onChange({ ...property, communityId: current.id });
       setQuote({
