@@ -21,6 +21,7 @@ import { HouseState, fields } from '@/lib/model';
 import { actualAreaSummary, recognizedAreaTotal } from '@/lib/property-extras';
 import PropertyFieldControl from './property-field-control';
 import { newId } from '@/lib/id';
+import { recognizeStandaloneFloorPlan } from '@/lib/floorplan-ocr';
 import {
   LOCATION_DATA,
   LOCATION_DISTRICTS,
@@ -57,6 +58,7 @@ export default function BulkReview({
     row: number | null;
   } | null>(null);
   const reuploadInput = useRef<HTMLInputElement>(null);
+  const planInputs = useRef<Array<HTMLInputElement | null>>([]);
   const nameInputs = useRef<Array<HTMLInputElement | null>>([]);
   const disabled = busy || working;
   useEffect(() => {
@@ -96,6 +98,52 @@ export default function BulkReview({
       onMessage(String(e));
     } finally {
       setWorking(false);
+    }
+  }
+  async function importFloorPlan(index: number, file: File | undefined) {
+    if (!file || disabled) return;
+    setWorking(true);
+    try {
+      if (file.size > 12 * 1024 * 1024) throw Error('图片需小于12MB');
+      const response = await fetch('/api/images', {
+        method: 'POST',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+      if (!response.ok) throw Error('户型图保存失败');
+      const { id } = (await response.json()) as { id: string };
+      const { createWorker } = await import('tesseract.js');
+      const worker = await createWorker('chi_sim', 1, {
+        workerPath: '/ocr/worker.min.js',
+        corePath: '/ocr',
+        langPath: '/ocr',
+        logger: (m) => {
+          if (m.status === 'recognizing text')
+            onMessage(`户型图识别中 ${Math.round(m.progress * 100)}%`);
+        },
+      });
+      try {
+        const floorPlan = await recognizeStandaloneFloorPlan(worker, file, id);
+        const row = rows[index];
+        if (!row) return;
+        change(index, {
+          property: {
+            ...row.property,
+            images: Array.from(new Set([...row.property.images, id])),
+            floorPlan,
+          },
+        });
+        onMessage(
+          `第${index + 1}套已识别户型图，修改房间明细后再保存。共识别 ${floorPlan.rooms.length} 项。`,
+        );
+      } finally {
+        await worker.terminate();
+      }
+    } catch (e) {
+      onMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setWorking(false);
+      if (planInputs.current[index]) planInputs.current[index]!.value = '';
     }
   }
   async function saveAll() {
@@ -409,6 +457,20 @@ export default function BulkReview({
                         })
                       }
                     />
+                    <label className="upload-label review-plan-upload">
+                      上传户型图
+                      <input
+                        ref={(element) => {
+                          planInputs.current[i] = element;
+                        }}
+                        disabled={disabled}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={(event) =>
+                          importFloorPlan(i, event.target.files?.[0])
+                        }
+                      />
+                    </label>
                     {actualAreaSummary(
                       r.property.area,
                       r.property.floorPlan,

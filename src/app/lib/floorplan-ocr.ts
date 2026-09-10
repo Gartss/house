@@ -120,3 +120,66 @@ export async function recognizeFloorPlan(
     confirmed: false,
   };
 }
+
+// Standalone floorplan uploads need tiled OCR because room labels are often
+// too small in the original portrait image for a single full-image pass.
+export async function recognizeStandaloneFloorPlan(
+  worker: any,
+  source: Blob | HTMLCanvasElement,
+  image: string,
+): Promise<FloorPlan> {
+  const bitmap = await createImageBitmap(source);
+  const texts: string[] = [];
+  const areaTexts: string[] = [];
+  const makeCanvas = (top: number, height: number, scale: number) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * height * scale);
+    canvas.getContext('2d')!.drawImage(
+      bitmap,
+      0,
+      bitmap.height * top,
+      bitmap.width,
+      bitmap.height * height,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    );
+    return canvas;
+  };
+  try {
+    const full = makeCanvas(0, 1, 2);
+    await worker.setParameters({ tessedit_pageseg_mode: '11' });
+    texts.push((await worker.recognize(full)).data.text);
+    await worker.setParameters({ tessedit_pageseg_mode: '6' });
+    texts.push((await worker.recognize(full)).data.text);
+    const slices = [
+      [0, 0.4],
+      [0.3, 0.4],
+      [0.6, 0.4],
+    ] as const;
+    for (const [top, height] of slices) {
+      const tile = makeCanvas(top, height, 3);
+      await worker.setParameters({ tessedit_pageseg_mode: '11' });
+      texts.push((await worker.recognize(tile)).data.text);
+      await worker.setParameters({
+        tessedit_pageseg_mode: '6',
+        tessedit_char_whitelist: '0123456789.m²',
+      });
+      areaTexts.push((await worker.recognize(tile)).data.text);
+    }
+  } finally {
+    bitmap.close();
+    await worker.setParameters({
+      tessedit_pageseg_mode: '3',
+      tessedit_char_whitelist: '',
+    });
+  }
+  return {
+    image,
+    text: [...texts, ...areaTexts].join('\n').slice(0, 50000),
+    rooms: mergeFloorPlanRooms(texts, areaTexts),
+    confirmed: false,
+  };
+}
