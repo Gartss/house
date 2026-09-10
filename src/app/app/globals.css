@@ -276,6 +276,34 @@ footer {
   padding-top: 12px;
   overflow-wrap: anywhere;
 }
+.import-progress {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+}
+.import-progress-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.import-progress-heading strong {
+  color: #1859df;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.import-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #dfe7f2;
+}
+.import-progress-value {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #3978ee, #1859df);
+  transition: width 180ms ease-out;
+}
 .section-heading {
   display: flex;
   justify-content: space-between;

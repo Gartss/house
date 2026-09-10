@@ -71,6 +71,8 @@ export default function HouseApp() {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [importProgress, setImportProgress] = useState<number | null>(null);
+  const [importProgressLabel, setImportProgressLabel] = useState('');
   const [page, setPage] = useState('list');
   const [edit, setEdit] = useState<Property | null>(null);
   const [query, setQuery] = useState('');
@@ -231,7 +233,24 @@ export default function HouseApp() {
   }
   async function importImages(files: FileList | null, replaceExisting = false) {
     if (!files || busy) return;
+    const fileList = Array.from(files);
+    const totalFiles = fileList.length;
+    let currentFileIndex = 0;
+    let phaseStart = 0.1;
+    let phaseSpan = 0.55;
+    const updateImportProgress = (localProgress: number, label: string) => {
+      const value = Math.min(
+        99,
+        Math.round(((currentFileIndex + localProgress) / totalFiles) * 100),
+      );
+      setImportProgress(value);
+      setImportProgressLabel(label);
+    };
     setBusy(true);
+    setImportProgress(0);
+    setImportProgressLabel(
+      totalFiles === 1 ? '准备导入图片' : `准备导入 ${totalFiles} 张图片`,
+    );
     let next = copy(state);
     try {
       const { createWorker, PSM } = await import('tesseract.js');
@@ -245,8 +264,9 @@ export default function HouseApp() {
         },
       });
       try {
-        for (const file of Array.from(files)) {
-          setMessage(`正在导入 ${file.name}`);
+        for (const [index, file] of fileList.entries()) {
+          currentFileIndex = index;
+          updateImportProgress(0.02, `正在上传第 ${index + 1}/${totalFiles} 张`);
           if (file.size > 12 * 1024 * 1024) throw Error('图片需小于12MB');
           const r = await fetch('/api/images', {
             method: 'POST',
@@ -254,6 +274,7 @@ export default function HouseApp() {
             body: file,
           });
           if (!r.ok) throw Error(await r.text());
+          updateImportProgress(0.08, `正在读取第 ${index + 1}/${totalFiles} 张`);
           const { id } = (await r.json()) as { id: string };
           const existingDraftIndex = next.drafts.findIndex(
             (draft) => draft.image === id,
@@ -262,12 +283,15 @@ export default function HouseApp() {
             next.properties.some((p) => p.images.includes(id)) ||
             (existingDraftIndex >= 0 && !replaceExisting)
           ) {
-            setMessage('这张截图已经导入，可在房源或待核对中查看');
+            updateImportProgress(1, `第 ${index + 1}/${totalFiles} 张已存在`);
             continue;
           }
           let text = '';
           try {
+            phaseStart = 0.1;
+            phaseSpan = 0.55;
             text = (await worker.recognize(file)).data.text;
+            updateImportProgress(0.65, `已识别第 ${index + 1}/${totalFiles} 张`);
           } catch {
             setMessage('识别未完成，已保留原图，可手动填写');
           }
@@ -280,6 +304,8 @@ export default function HouseApp() {
               (!properties[0].layout && /(?:户型|室[\s\S]*厅)/.test(text)))
           ) {
             try {
+              phaseStart = 0.65;
+              phaseSpan = 0.13;
               await worker.setParameters({
                 tessedit_pageseg_mode: PSM.SINGLE_BLOCK,
               });
@@ -296,6 +322,8 @@ export default function HouseApp() {
                 text = `${text}\n${retryText}`.slice(0, 50000);
               }
               if (!properties[0].area) {
+                phaseStart = 0.78;
+                phaseSpan = 0.17;
                 await worker.setParameters({
                   tessedit_pageseg_mode: PSM.SPARSE_TEXT,
                 });
@@ -313,6 +341,8 @@ export default function HouseApp() {
           }
           if (properties.length === 1) {
             try {
+              phaseStart = 0.78;
+              phaseSpan = 0.17;
               const { recognizeFloorPlan } =
                 await import('@/lib/floorplan-ocr');
               properties[0].floorPlan = await recognizeFloorPlan(
@@ -336,13 +366,20 @@ export default function HouseApp() {
           };
           if (existingDraftIndex >= 0) next.drafts[existingDraftIndex] = draft;
           else next.drafts.push(draft);
+          updateImportProgress(1, `已完成第 ${index + 1}/${totalFiles} 张`);
         }
+        setImportProgress(99);
+        setImportProgressLabel('正在合并房源信息');
         next = mergeImportedDrafts(next);
       } finally {
         await worker.terminate();
       }
-      setBusy(false);
-      return (await save(next)) ? next : undefined;
+      const saved = await save(next);
+      if (saved) {
+        setImportProgress(100);
+        setImportProgressLabel('导入完成');
+      }
+      return saved ? next : undefined;
     } catch (e) {
       setBusy(false);
       if (next.drafts.length > state.drafts.length)
@@ -351,6 +388,8 @@ export default function HouseApp() {
       return undefined;
     } finally {
       setBusy(false);
+      setImportProgress(null);
+      setImportProgressLabel('');
       if (fileInput.current) fileInput.current.value = '';
     }
   }
@@ -618,8 +657,25 @@ export default function HouseApp() {
       </div>
       {(busy || (message && message !== '已保存')) && (
         <div className="status" role="status">
-          {busy ? '处理中，请稍候… ' : ''}
-          {message === '已保存' ? '' : message}
+          {busy && importProgress !== null ? (
+            <div className="import-progress" aria-label="截图导入进度">
+              <div className="import-progress-heading">
+                <span>{importProgressLabel}</span>
+                <strong>{importProgress}%</strong>
+              </div>
+              <div className="import-progress-track">
+                <div
+                  className="import-progress-value"
+                  style={{ width: `${importProgress}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <>
+              {busy ? '处理中，请稍候… ' : ''}
+              {message === '已保存' ? '' : message}
+            </>
+          )}
         </div>
       )}
       {!ready ? (
