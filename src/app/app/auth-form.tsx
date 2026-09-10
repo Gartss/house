@@ -2,6 +2,8 @@
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import ErrorNotice from '@/components/error-notice';
+import { errorMessage } from '@/lib/error-message';
 export default function AuthForm() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
@@ -23,7 +25,7 @@ export default function AuthForm() {
       if (!r.ok) throw Error(d.error);
       location.reload();
     } catch (e) {
-      setError(String(e).replace(/^Error: /, ''));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -62,11 +64,7 @@ export default function AuthForm() {
             />
           </label>
         )}
-        {error && (
-          <p className="status" role="alert">
-            {error}
-          </p>
-        )}
+        {error && <ErrorNotice compact>{error}</ErrorNotice>}
         <Button type="submit" disabled={busy}>
           {mode === 'login' ? '登录' : '注册并登录'}
         </Button>

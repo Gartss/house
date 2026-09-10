@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import ErrorNotice from '@/components/error-notice';
 import {
   Table,
   TableHeader,
@@ -21,6 +22,7 @@ import { HouseState, fields } from '@/lib/model';
 import { actualAreaSummary, recognizedAreaTotal } from '@/lib/property-extras';
 import PropertyFieldControl from './property-field-control';
 import { newId } from '@/lib/id';
+import { errorMessage } from '@/lib/error-message';
 import { recognizeStandaloneFloorPlan } from '@/lib/floorplan-ocr';
 import {
   LOCATION_DATA,
@@ -57,6 +59,7 @@ export default function BulkReview({
     message: string;
     row: number | null;
   } | null>(null);
+  const [operationError, setOperationError] = useState('');
   const reuploadInput = useRef<HTMLInputElement>(null);
   const planInputs = useRef<Array<HTMLInputElement | null>>([]);
   const nameInputs = useRef<Array<HTMLInputElement | null>>([]);
@@ -76,6 +79,7 @@ export default function BulkReview({
   async function importPhotos(index: number, files: FileList | null) {
     if (!files || disabled) return;
     setWorking(true);
+    setOperationError('');
     try {
       const row = rows[index];
       if (!row) return;
@@ -95,7 +99,7 @@ export default function BulkReview({
       });
       onMessage(`第${index + 1}套已添加 ${files.length} 张看房照片。`);
     } catch (e) {
-      onMessage(String(e));
+      setOperationError(errorMessage(e));
     } finally {
       setWorking(false);
     }
@@ -103,6 +107,7 @@ export default function BulkReview({
   async function importFloorPlan(index: number, file: File | undefined) {
     if (!file || disabled) return;
     setWorking(true);
+    setOperationError('');
     try {
       if (file.size > 12 * 1024 * 1024) throw Error('图片需小于12MB');
       const response = await fetch('/api/images', {
@@ -140,7 +145,7 @@ export default function BulkReview({
         await worker.terminate();
       }
     } catch (e) {
-      onMessage(e instanceof Error ? e.message : String(e));
+      setOperationError(errorMessage(e));
     } finally {
       setWorking(false);
       if (planInputs.current[index]) planInputs.current[index]!.value = '';
@@ -149,6 +154,7 @@ export default function BulkReview({
   async function saveAll() {
     if (disabled) return;
     setSaveIssue(null);
+    setOperationError('');
     setWorking(true);
     try {
       const next = await applyReview(
@@ -161,7 +167,7 @@ export default function BulkReview({
         onDone();
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const message = errorMessage(e);
       const missingName = message.match(/^第(\d+)行：请填写小区 \/ 地址$/);
       const row = missingName ? Number(missingName[1]) - 1 : null;
       setSaveIssue({ message, row });
@@ -179,6 +185,7 @@ export default function BulkReview({
     )
       return;
     setWorking(true);
+    setOperationError('');
     try {
       const next = await onReupload(files);
       if (!next) return;
@@ -212,6 +219,7 @@ export default function BulkReview({
     )
       return;
     setWorking(true);
+    setOperationError('');
     try {
       const next = removeReviewRow(state, row);
       if (await onSave(next)) {
@@ -220,7 +228,7 @@ export default function BulkReview({
         if (!remaining.length) onDone();
       }
     } catch (e) {
-      onMessage(e instanceof Error ? e.message : String(e));
+      setOperationError(errorMessage(e));
     } finally {
       setWorking(false);
     }
@@ -281,11 +289,9 @@ export default function BulkReview({
         </div>
       </div>
       {saveIssue && (
-        <div className="review-save-error" role="alert">
-          <strong>暂未保存</strong>
-          <span>{saveIssue.message}</span>
-        </div>
+        <ErrorNotice title="暂未保存">{saveIssue.message}</ErrorNotice>
       )}
+      {operationError && <ErrorNotice>{operationError}</ErrorNotice>}
       <div className="data-grid review-grid">
         <Table>
           <TableHeader>

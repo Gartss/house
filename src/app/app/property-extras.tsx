@@ -2,6 +2,7 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import ErrorNotice from '@/components/error-notice';
 import { HouseState, Property } from '@/lib/model';
 import {
   actualAreaSummary,
@@ -11,6 +12,7 @@ import {
   communityForProperty,
 } from '@/lib/property-extras';
 import { newId } from '@/lib/id';
+import { errorMessage } from '@/lib/error-message';
 async function readImage(
   file: File,
   onProgress: (s: string) => void,
@@ -168,7 +170,7 @@ export default function PropertyExtras({
         }
       }
     } catch (e) {
-      setLocalError(String(e));
+      setLocalError(errorMessage(e));
     } finally {
       setWorking(false);
       onBusy(false);
@@ -193,7 +195,7 @@ export default function PropertyExtras({
       onChange({ ...property, photos: Array.from(new Set(ids)) });
       onMessage(`已添加 ${files.length} 张看房照片，点击页面顶部“保存”生效。`);
     } catch (e) {
-      setLocalError(String(e));
+      setLocalError(errorMessage(e));
     } finally {
       setWorking(false);
       onBusy(false);
@@ -656,11 +658,7 @@ export default function PropertyExtras({
           </>
         )}
       </section>
-      {localError && (
-        <p className="status" role="alert">
-          {localError}
-        </p>
-      )}
+      {localError && <ErrorNotice>{localError}</ErrorNotice>}
     </fieldset>
   );
 }

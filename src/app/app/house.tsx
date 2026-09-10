@@ -13,6 +13,7 @@ import { useEffect, useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import ErrorNotice from '@/components/error-notice';
 import {
   Table,
   TableBody,
@@ -44,6 +45,7 @@ import {
   mergePropertyInformation,
 } from '@/lib/property-match';
 import { newId } from '@/lib/id';
+import { errorMessage } from '@/lib/error-message';
 import {
   LOCATION_DATA,
   LOCATION_DISTRICTS,
@@ -70,7 +72,16 @@ export default function HouseApp() {
   const [version, setVersion] = useState(0);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState('');
+  const [message, setMessageText] = useState('');
+  const [messageKind, setMessageKind] = useState<'info' | 'error'>('info');
+  const setMessage = (text: string) => {
+    setMessageKind('info');
+    setMessageText(text);
+  };
+  const setErrorMessage = (text: string) => {
+    setMessageKind('error');
+    setMessageText(text);
+  };
   const [importProgress, setImportProgress] = useState<number | null>(null);
   const [importProgressLabel, setImportProgressLabel] = useState('');
   const [page, setPage] = useState('list');
@@ -112,7 +123,7 @@ export default function HouseApp() {
       setVersion(d.version);
       setReady(true);
     } catch (e) {
-      setMessage(String(e));
+      setErrorMessage(errorMessage(e, '房源读取失败，请重试。'));
     }
   }
   useEffect(() => {
@@ -148,7 +159,9 @@ export default function HouseApp() {
       setMessage('');
       return true;
     } catch (e) {
-      setMessage(`${String(e)}。未确认保存，请保留当前页面。`);
+      setErrorMessage(
+        `${errorMessage(e, '保存失败')}。未确认保存，请保留当前页面。`,
+      );
       return false;
     } finally {
       mutex.current = false;
@@ -167,7 +180,7 @@ export default function HouseApp() {
   }
   async function saveProperty() {
     if (!edit || !edit.name.trim()) {
-      setMessage('请填写小区 / 地址');
+      setErrorMessage('请填写小区 / 地址');
       return;
     }
     const next = copy(state);
@@ -178,7 +191,7 @@ export default function HouseApp() {
   }
   async function addQuote() {
     if (!edit || !Number(price) || Number(price) <= 0) {
-      setMessage('请填写有效总价');
+      setErrorMessage('请填写有效总价');
       return;
     }
     const q: Quote = {
@@ -192,7 +205,7 @@ export default function HouseApp() {
     const next = copy(state);
     const i = next.properties.findIndex((x) => x.id === p.id);
     if (i < 0) {
-      setMessage('请先保存房源资料');
+      setErrorMessage('请先保存房源资料');
       return;
     }
     next.properties[i] = p;
@@ -293,7 +306,7 @@ export default function HouseApp() {
             text = (await worker.recognize(file)).data.text;
             updateImportProgress(0.65, `已识别第 ${index + 1}/${totalFiles} 张`);
           } catch {
-            setMessage('识别未完成，已保留原图，可手动填写');
+            setErrorMessage('识别未完成，已保留原图，可手动填写。');
           }
           const { parseScreenshot } = await import('@/lib/ocr');
           const properties = parseScreenshot(text, id);
@@ -352,7 +365,7 @@ export default function HouseApp() {
                 text,
               );
             } catch {
-              setMessage('户型面积未完整识别，请在核对页补充。');
+              setErrorMessage('户型面积未完整识别，请在核对页补充。');
             }
           }
           const draft = {
@@ -384,7 +397,9 @@ export default function HouseApp() {
       setBusy(false);
       if (next.drafts.length > state.drafts.length)
         return (await save(next)) ? next : undefined;
-      setMessage(`导入未全部完成：${String(e)}。可重新选择截图重试。`);
+      setErrorMessage(
+        `导入未全部完成：${errorMessage(e)}。可重新选择截图重试。`,
+      );
       return undefined;
     } finally {
       setBusy(false);
@@ -433,7 +448,7 @@ export default function HouseApp() {
       setTimeout(() => URL.revokeObjectURL(url), 10000);
       setMessage('备份已生成，请保存到文件。包含原图，请妥善保管。');
     } catch (e) {
-      setMessage(String(e));
+      setErrorMessage(errorMessage(e, '备份生成失败，请重试。'));
     } finally {
       setBusy(false);
     }
@@ -484,7 +499,7 @@ export default function HouseApp() {
       setBusy(false);
       await save(next);
     } catch (e) {
-      setMessage(`恢复失败：${String(e)}`);
+      setErrorMessage(`恢复失败：${errorMessage(e)}`);
     } finally {
       setBusy(false);
       if (backupInput.current) backupInput.current.value = '';
@@ -655,9 +670,9 @@ export default function HouseApp() {
           onChange={(e) => restore(e.target.files?.[0])}
         />
       </div>
-      {(busy || (message && message !== '已保存')) && (
-        <div className="status" role="status">
-          {busy && importProgress !== null ? (
+      {(busy || (message && message !== '已保存')) &&
+        (busy && importProgress !== null ? (
+          <div className="status" role="status">
             <div className="import-progress" aria-label="截图导入进度">
               <div className="import-progress-heading">
                 <span>{importProgressLabel}</span>
@@ -670,14 +685,15 @@ export default function HouseApp() {
                 />
               </div>
             </div>
-          ) : (
-            <>
-              {busy ? '处理中，请稍候… ' : ''}
-              {message === '已保存' ? '' : message}
-            </>
-          )}
-        </div>
-      )}
+          </div>
+        ) : messageKind === 'error' && message ? (
+          <ErrorNotice>{message}</ErrorNotice>
+        ) : (
+          <div className="status" role="status">
+            {busy ? '处理中，请稍候… ' : ''}
+            {message === '已保存' ? '' : message}
+          </div>
+        ))}
       {!ready ? (
         <section className="welcome">
           <p>正在读取房源…</p>
@@ -833,7 +849,9 @@ export default function HouseApp() {
                     {minArea &&
                       maxArea &&
                       Number(minArea) > Number(maxArea) && (
-                        <small role="alert">最低面积不能大于最高面积</small>
+                        <ErrorNotice compact>
+                          最低面积不能大于最高面积
+                        </ErrorNotice>
                       )}
                   </div>
                   <div className="range-filter">
@@ -862,7 +880,9 @@ export default function HouseApp() {
                     {minUnit &&
                       maxUnit &&
                       Number(minUnit) > Number(maxUnit) && (
-                        <small role="alert">最低单价不能大于最高单价</small>
+                        <ErrorNotice compact>
+                          最低单价不能大于最高单价
+                        </ErrorNotice>
                       )}
                   </div>
                   <label>
