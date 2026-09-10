@@ -109,6 +109,8 @@ export default function BulkReview({
     setWorking(true);
     setOperationError('');
     try {
+      const row = rows[index];
+      if (!row) return;
       if (file.size > 12 * 1024 * 1024) throw Error('图片需小于12MB');
       const response = await fetch('/api/images', {
         method: 'POST',
@@ -128,9 +130,12 @@ export default function BulkReview({
         },
       });
       try {
-        const floorPlan = await recognizeStandaloneFloorPlan(worker, file, id);
-        const row = rows[index];
-        if (!row) return;
+        const floorPlan = await recognizeStandaloneFloorPlan(
+          worker,
+          file,
+          id,
+          row.property.layout,
+        );
         change(index, {
           property: {
             ...row.property,

@@ -18,6 +18,7 @@ async function readImage(
   onProgress: (s: string) => void,
   crop?: { left: number; top: number; width: number; height: number },
   floorplan = false,
+  expectedLayout = '',
 ) {
   if (file.size > 12 * 1024 * 1024) throw Error('图片需小于12MB');
   const response = await fetch('/api/images', {
@@ -67,7 +68,12 @@ async function readImage(
     if (floorplan) {
       const { recognizeStandaloneFloorPlan } =
         await import('@/lib/floorplan-ocr');
-      const plan = await recognizeStandaloneFloorPlan(worker, source, id);
+      const plan = await recognizeStandaloneFloorPlan(
+        worker,
+        source,
+        id,
+        expectedLayout,
+      );
       return { id, text: plan.text, floorPlan: plan };
     }
     text = (await worker.recognize(source)).data.text;
@@ -139,6 +145,7 @@ export default function PropertyExtras({
         onMessage,
         type === 'plan' ? crop : undefined,
         type === 'plan',
+        property.layout,
       );
       if (type === 'plan') {
         fileRef.current = file;

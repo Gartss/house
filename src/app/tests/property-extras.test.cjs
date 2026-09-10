@@ -1,12 +1,188 @@
-const ts=require('typescript'),fs=require('fs'),assert=require('node:assert/strict');
-require.extensions['.ts']=(m,p)=>m._compile(ts.transpileModule(fs.readFileSync(p,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,p);
-const {areaSummary,actualAreaSummary,recognizedAreaTotal,parseRooms,parseCommunityQuote}=require('../lib/property-extras.ts');const {newProperty,validateState}=require('../lib/model.ts');const {validTransition}=require('../lib/state-transition.ts');
-const {mergeFloorPlanRooms}=require('../lib/floorplan-ocr.ts');
-const image='a'.repeat(64);const text='厨房A\n7.0 m²\n卫A 3.7㎡\n客厅A 12.1mi\n卧室A 14.9㎡\n阳台A 4.9㎡\n建筑面积 50.15㎡\n3720';const rooms=parseRooms(text);assert.equal(rooms.length,5);let plan={image,text,rooms,confirmed:false};assert.equal(areaSummary('50.15',plan),null);plan.confirmed=true;assert.deepEqual(areaSummary('50.15',plan),{total:37.7,rate:75.17});plan.rooms=rooms.map(r=>({...r,included:true}));assert.deepEqual(areaSummary('50.15',plan),{total:42.6,rate:84.95});assert.equal(areaSummary('',plan).rate,null);assert.equal(areaSummary('50.15',{...plan,rooms:[{...rooms[0],area:'-1'}]}),null);
-assert.equal(parseCommunityQuote('成交均价38,917元/㎡').amount,'38917');assert.equal(parseCommunityQuote('挂牌均价38,463元/㎡').amount,'');assert.equal(parseRooms('建筑面积50.15㎡ 售价189万').length,0);assert.equal(recognizedAreaTotal({image,text,rooms:[{id:'1',name:'待核对房间',area:'11.2',included:true},{id:'2',name:'厨房',area:'4.0',included:true}],confirmed:false}),15.2);assert.equal(recognizedAreaTotal(undefined),null);
-const reportedRooms=mergeFloorPlanRooms(['卧室B\n11.2m²\n厨房\n4.0m²\n客厅\n8.7m²\n卫生间\n3.4m²\n卧室A\n14.8m²'],['11.2m\n4.0m\n8.7m\n3.4m\n14.8m']);assert.deepEqual(reportedRooms.map(r=>Number(r.area)).sort((a,b)=>a-b),[3.4,4,8.7,11.2,14.8]);assert.equal(recognizedAreaTotal({image,text,rooms:reportedRooms,confirmed:false}),42.1);
-const splitRoom=mergeFloorPlanRooms(['厨房\n文字与数字分行'],['4.0m']);assert.equal(splitRoom.length,1);assert.equal(splitRoom[0].name,'厨房');assert.equal(splitRoom[0].area,'4.0');
-const livePlan={image,text,rooms:[{id:'1',name:'待核对房间',area:'11.2',included:true},{id:'2',name:'厨房',area:'4.0',included:true}],confirmed:false};assert.deepEqual(actualAreaSummary('59.27',livePlan,''),{total:15.2,rate:25.65});livePlan.rooms[1].area='5.0';assert.deepEqual(actualAreaSummary('59.27',livePlan,''),{total:16.2,rate:27.33});livePlan.rooms[0].included=false;assert.deepEqual(actualAreaSummary('59.27',livePlan,''),{total:5,rate:8.44});
-const p={...newProperty(),name:'测试',images:[image],floorPlan:plan,communityId:'c'};const q={id:'q',amount:38917,unit:'元/㎡',kind:'成交均价',period:'2026-08',image,createdAt:'2026-09-09T00:00:00Z'};const state={properties:[p],drafts:[],communities:[{id:'c',name:'小区',region:'闵行',quotes:[q]}]};assert(validateState(state));assert(!validateState({...state,communities:[]}));assert(!validateState({...state,properties:[{...p,images:[]}]}));assert(validTransition(state,{...state,communities:[{...state.communities[0],quotes:[]}]}));assert(validTransition(state,{...state,communities:[{...state.communities[0],quotes:[q,{...q,id:'q2',amount:38000}]}]}));assert(validateState({properties:[{...newProperty(),name:'旧数据'}],drafts:[]}));
-assert.deepEqual(JSON.parse(JSON.stringify(state)),state);console.log('PASS: floorplan complete/partial/included rooms; balcony modes; absent denominator; original source validation; community association; immutable community history; old-state compatibility.');
-assert.equal(parseCommunityQuote('挂牌均价38000元/㎡ 成交均价39000元/㎡').amount,'39000');assert.equal(parseCommunityQuote('成交均价3.8万/㎡').amount,'38000');assert.equal(parseCommunityQuote('成交均价\n38917元/㎡').amount,'38917');
+const ts = require('typescript'),
+  fs = require('fs'),
+  assert = require('node:assert/strict');
+require.extensions['.ts'] = (m, p) =>
+  m._compile(
+    ts.transpileModule(fs.readFileSync(p, 'utf8'), {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2022,
+      },
+    }).outputText,
+    p,
+  );
+const {
+  areaSummary,
+  actualAreaSummary,
+  recognizedAreaTotal,
+  parseRooms,
+  parseCommunityQuote,
+} = require('../lib/property-extras.ts');
+const { newProperty, validateState } = require('../lib/model.ts');
+const { validTransition } = require('../lib/state-transition.ts');
+const {
+  mergeFloorPlanRooms,
+  positionedRoomParts,
+} = require('../lib/floorplan-ocr.ts');
+const image = 'a'.repeat(64);
+const text =
+  '厨房A\n7.0 m²\n卫A 3.7㎡\n客厅A 12.1mi\n卧室A 14.9㎡\n阳台A 4.9㎡\n建筑面积 50.15㎡\n3720';
+const rooms = parseRooms(text);
+assert.equal(rooms.length, 5);
+let plan = { image, text, rooms, confirmed: false };
+assert.equal(areaSummary('50.15', plan), null);
+plan.confirmed = true;
+assert.deepEqual(areaSummary('50.15', plan), { total: 37.7, rate: 75.17 });
+plan.rooms = rooms.map((r) => ({ ...r, included: true }));
+assert.deepEqual(areaSummary('50.15', plan), { total: 42.6, rate: 84.95 });
+assert.equal(areaSummary('', plan).rate, null);
+assert.equal(
+  areaSummary('50.15', { ...plan, rooms: [{ ...rooms[0], area: '-1' }] }),
+  null,
+);
+assert.equal(parseCommunityQuote('成交均价38,917元/㎡').amount, '38917');
+assert.equal(parseCommunityQuote('挂牌均价38,463元/㎡').amount, '');
+assert.equal(parseRooms('建筑面积50.15㎡ 售价189万').length, 0);
+assert.equal(
+  recognizedAreaTotal({
+    image,
+    text,
+    rooms: [
+      { id: '1', name: '待核对房间', area: '11.2', included: true },
+      { id: '2', name: '厨房', area: '4.0', included: true },
+    ],
+    confirmed: false,
+  }),
+  15.2,
+);
+assert.equal(recognizedAreaTotal(undefined), null);
+const reportedRooms = mergeFloorPlanRooms(
+  ['卧室B\n11.2m²\n厨房\n4.0m²\n客厅\n8.7m²\n卫生间\n3.4m²\n卧室A\n14.8m²'],
+  ['11.2m\n4.0m\n8.7m\n3.4m\n14.8m'],
+);
+assert.deepEqual(
+  reportedRooms.map((r) => Number(r.area)).sort((a, b) => a - b),
+  [3.4, 4, 8.7, 11.2, 14.8],
+);
+assert.equal(
+  recognizedAreaTotal({ image, text, rooms: reportedRooms, confirmed: false }),
+  42.1,
+);
+const splitRoom = mergeFloorPlanRooms(['厨房\n文字与数字分行'], ['4.0m']);
+assert.equal(splitRoom.length, 1);
+assert.equal(splitRoom[0].name, '厨房');
+assert.equal(splitRoom[0].area, '4.0');
+const positionedTsv = [
+  '5\t1\t1\t1\t1\t1\t80\t70\t60\t30\t90\t客厅',
+  '5\t1\t1\t1\t1\t2\t145\t70\t20\t30\t90\tA',
+  '5\t1\t1\t1\t2\t1\t100\t115\t65\t25\t90\t15.3',
+  '5\t1\t1\t1\t3\t1\t390\t70\t70\t30\t90\t卧室',
+  '5\t1\t1\t1\t3\t2\t465\t70\t20\t30\t90\tB',
+  '5\t1\t1\t1\t4\t1\t410\t115\t65\t25\t90\t11.2',
+  '5\t1\t1\t1\t5\t1\t250\t220\t20\t30\t90\t了',
+  '5\t1\t1\t1\t5\t2\t275\t220\t20\t30\t90\tA',
+  '5\t1\t1\t1\t6\t1\t255\t260\t55\t25\t90\t2.8',
+].join('\n');
+const positionedRooms = mergeFloorPlanRooms(
+  [],
+  [],
+  positionedRoomParts(positionedTsv, 0, 1, 600, 400),
+);
+assert.deepEqual(
+  positionedRooms.map(({ name, area }) => ({ name, area })),
+  [
+    { name: '客厅A', area: '15.3' },
+    { name: '卧室B', area: '11.2' },
+    { name: '卫A', area: '2.8' },
+  ],
+);
+const layoutCompleted = mergeFloorPlanRooms(
+  ['客厅A 15.3m²\n卧室A 12.2m²\n卧室B 11.2m²'],
+  ['2.8m'],
+  [],
+  '2室1厅1卫',
+);
+assert.equal(
+  layoutCompleted.find((room) => room.area === '2.8').name,
+  '卫生间（待核对）',
+);
+const livePlan = {
+  image,
+  text,
+  rooms: [
+    { id: '1', name: '待核对房间', area: '11.2', included: true },
+    { id: '2', name: '厨房', area: '4.0', included: true },
+  ],
+  confirmed: false,
+};
+assert.deepEqual(actualAreaSummary('59.27', livePlan, ''), {
+  total: 15.2,
+  rate: 25.65,
+});
+livePlan.rooms[1].area = '5.0';
+assert.deepEqual(actualAreaSummary('59.27', livePlan, ''), {
+  total: 16.2,
+  rate: 27.33,
+});
+livePlan.rooms[0].included = false;
+assert.deepEqual(actualAreaSummary('59.27', livePlan, ''), {
+  total: 5,
+  rate: 8.44,
+});
+const p = {
+  ...newProperty(),
+  name: '测试',
+  images: [image],
+  floorPlan: plan,
+  communityId: 'c',
+};
+const q = {
+  id: 'q',
+  amount: 38917,
+  unit: '元/㎡',
+  kind: '成交均价',
+  period: '2026-08',
+  image,
+  createdAt: '2026-09-09T00:00:00Z',
+};
+const state = {
+  properties: [p],
+  drafts: [],
+  communities: [{ id: 'c', name: '小区', region: '闵行', quotes: [q] }],
+};
+assert(validateState(state));
+assert(!validateState({ ...state, communities: [] }));
+assert(!validateState({ ...state, properties: [{ ...p, images: [] }] }));
+assert(
+  validTransition(state, {
+    ...state,
+    communities: [{ ...state.communities[0], quotes: [] }],
+  }),
+);
+assert(
+  validTransition(state, {
+    ...state,
+    communities: [
+      {
+        ...state.communities[0],
+        quotes: [q, { ...q, id: 'q2', amount: 38000 }],
+      },
+    ],
+  }),
+);
+assert(
+  validateState({
+    properties: [{ ...newProperty(), name: '旧数据' }],
+    drafts: [],
+  }),
+);
+assert.deepEqual(JSON.parse(JSON.stringify(state)), state);
+console.log(
+  'PASS: floorplan complete/partial/included rooms; balcony modes; absent denominator; original source validation; community association; immutable community history; old-state compatibility.',
+);
+assert.equal(
+  parseCommunityQuote('挂牌均价38000元/㎡ 成交均价39000元/㎡').amount,
+  '39000',
+);
+assert.equal(parseCommunityQuote('成交均价3.8万/㎡').amount, '38000');
+assert.equal(parseCommunityQuote('成交均价\n38917元/㎡').amount, '38917');
