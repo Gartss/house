@@ -40,3 +40,13 @@
 - 数据备份：`/opt/house-backups/house-data-before-20260910-community-trends.tar.gz`；新容器继续挂载 `/opt/house-data:/data`，数据目录发布前后均为 9.1 MB。
 - 新镜像先在 ECS 独立端口连续运行 30 秒，主页返回 HTTP 200、未登录 `/api/state` 返回 401、容器重启次数为 0，随后才切换正式流量。
 - 切换后 ECS 本机与公网 80、8080 均返回 HTTP 200，未登录 `/api/state` 返回 401；容器重启策略为 `unless-stopped`，重启次数为 0。
+
+## 2026-09-10 房源列表界面更新
+
+- 发布镜像：`house-app:20260910-property-list-ui`，对应代码提交 `d1123ed`。
+- 更新内容：房源首页增加房源数量，排序改为下拉选择；筛选区改为统一入口并显示已选条件数量，调整列表可视高度与移动端间距。
+- 发布前使用 Node 22 完成 6 组核心测试、生产构建和本地生产服务冒烟；首页返回 HTTP 200，未登录 `/api/state` 返回 401。
+- 从 Git 提交生成干净构建目录，发布包未包含 Axhub 原型、未跟踪的 `/prototype` 页面、截图、测试、本地依赖、临时文件或 macOS 隐藏文件。
+- 数据备份：`/opt/house-backups/house-data-before-20260910-property-list-ui.tar.gz`；新容器继续挂载 `/opt/house-data:/data`，发布前后数据目录均为 11 MB。
+- 候选镜像在独立端口完成启动后连续稳定运行 30 秒，主页返回 HTTP 200、未登录 `/api/state` 返回 401、容器重启次数为 0，随后切换正式流量。
+- 切换后 ECS 本机与公网 80、8080 均返回 HTTP 200，未登录 `/api/state` 返回 401；容器重启策略为 `unless-stopped`，重启次数为 0。
