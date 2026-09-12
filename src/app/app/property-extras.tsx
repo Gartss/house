@@ -13,6 +13,15 @@ import {
 } from '@/lib/property-extras';
 import { newId } from '@/lib/id';
 import { errorMessage } from '@/lib/error-message';
+import { getLocalImageBlob, putLocalImage, useLocalImageUrl } from '@/lib/local-store';
+function LocalExtraImage({ id, className, alt }: { id: string; className?: string; alt: string }) {
+  const src = useLocalImageUrl(id);
+  return src ? <a href={src} target="_blank" rel="noreferrer"><img className={className} src={src} alt={alt} /></a> : null;
+}
+function LocalPlainImage({ id, className, alt }: { id: string; className?: string; alt: string }) {
+  const src = useLocalImageUrl(id);
+  return src ? <img className={className} src={src} alt={alt} /> : null;
+}
 async function readImage(
   file: File,
   onProgress: (s: string) => void,
@@ -21,13 +30,7 @@ async function readImage(
   expectedLayout = '',
 ) {
   if (file.size > 12 * 1024 * 1024) throw Error('图片需小于12MB');
-  const response = await fetch('/api/images', {
-    method: 'POST',
-    headers: { 'Content-Type': file.type },
-    body: file,
-  });
-  if (!response.ok) throw Error('图片保存失败');
-  const { id } = (await response.json()) as { id: string };
+  const id = await putLocalImage(file);
   const { createWorker } = await import('tesseract.js');
   const worker = await createWorker('chi_sim', 1, {
     workerPath: '/ocr/worker.min.js',
@@ -92,6 +95,10 @@ export default function PropertyExtras({
   busy,
   onBusy,
   onMessage,
+  onlyArea = false,
+  compactArea = false,
+  onOpenFloorplan,
+  onlyCommunity = false,
 }: {
   property: Property;
   onChange: (p: Property) => void;
@@ -100,6 +107,10 @@ export default function PropertyExtras({
   busy: boolean;
   onBusy: (v: boolean) => void;
   onMessage: (s: string) => void;
+  onlyArea?: boolean;
+  compactArea?: boolean;
+  onOpenFloorplan?: () => void;
+  onlyCommunity?: boolean;
 }) {
   const [working, setWorking] = useState(false);
   const [quote, setQuote] = useState<{
@@ -191,13 +202,7 @@ export default function PropertyExtras({
       const ids = [...(property.photos || [])];
       for (const file of Array.from(files)) {
         if (file.size > 12 * 1024 * 1024) throw Error('图片需小于12MB');
-        const response = await fetch('/api/images', {
-          method: 'POST',
-          headers: { 'Content-Type': file.type },
-          body: file,
-        });
-        if (!response.ok) throw Error('看房照片保存失败');
-        ids.push(((await response.json()) as { id: string }).id);
+        ids.push(await putLocalImage(file));
       }
       onChange({ ...property, photos: Array.from(new Set(ids)) });
       onMessage(`已添加 ${files.length} 张看房照片，点击页面顶部“保存”生效。`);
@@ -285,8 +290,8 @@ export default function PropertyExtras({
   }
   const communityName = community?.name || property.name || '当前小区';
   return (
-    <fieldset disabled={disabled} className="extras-fields">
-      <section className="panel">
+    <fieldset disabled={disabled} className={`extras-fields ${onlyArea ? 'only-area' : ''} ${onlyCommunity ? 'only-community' : ''} ${compactArea ? 'compact-area' : ''}`}>
+      <section className="panel extra-community">
         <h2>小区成交价</h2>
         <p className="secondary">当前小区：{communityName}</p>
         <label className="upload-label">
@@ -303,13 +308,7 @@ export default function PropertyExtras({
         </label>
         {quote && (
           <div className="extra-review">
-            {quote.image && (
-              <img
-                className="full-image"
-                src={`/api/images/${quote.image}`}
-                alt="小区成交价原图"
-              />
-            )}
+            {quote.image && <LocalExtraImage id={quote.image} className="full-image" alt="小区成交价原图" />}
             <div className="edit-grid">
               <label>
                 成交总价（万元）
@@ -351,15 +350,7 @@ export default function PropertyExtras({
                 <strong>{q.amount.toLocaleString()} 万元</strong>
                 <p>{q.period || '时间待补'}</p>
               </div>
-              {q.image && (
-                <a
-                  href={`/api/images/${q.image}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  原图
-                </a>
-              )}
+              {q.image && <LocalExtraImage id={q.image} alt="成交价原图" />}
               <Button
                 variant="ghost"
                 disabled={disabled}
@@ -370,7 +361,7 @@ export default function PropertyExtras({
             </div>
           ))}
       </section>
-      <section className="panel">
+      <section className="panel extra-photos">
         <h2>看房照片</h2>
         <p className="secondary">可添加现场拍摄照片，与当前房源一起保存。</p>
         <label className="upload-label">
@@ -390,15 +381,9 @@ export default function PropertyExtras({
           <div className="photo-gallery">
             {property.photos.map((id) => (
               <div className="photo-item" key={id}>
-                <a
-                  href={`/api/images/${id}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setPreviewPhoto(id);
-                  }}
-                >
-                  <img src={`/api/images/${id}`} alt="看房照片，点击查看大图" />
-                </a>
+                <button className="photo-preview-button" onClick={() => setPreviewPhoto(id)}>
+                  <LocalPlainImage id={id} alt="看房照片，点击查看大图" />
+                </button>
                 <Button
                   variant="destructive"
                   onClick={() =>
@@ -426,14 +411,26 @@ export default function PropertyExtras({
             className="photo-lightbox-content"
             onClick={(e) => e.stopPropagation()}
           >
-            <img src={`/api/images/${previewPhoto}`} alt="看房照片大图" />
+            <LocalPlainImage id={previewPhoto} alt="看房照片大图" />
             <Button variant="outline" onClick={() => setPreviewPhoto(null)}>
               关闭
             </Button>
           </div>
         </div>
       )}
-      <section className="panel">
+      <section className="panel extra-area">
+        {compactArea && (
+          <div className="compact-area-editor">
+            <div>
+              <small>实际面积</small>
+              <strong>{summary ? `${summary.total}㎡` : '待填写'}</strong>
+              <span>{summary?.rate != null ? `得房率 ${summary.rate}%` : '上传户型图后可计算得房率'}</span>
+            </div>
+            <Button type="button" variant="outline" onClick={onOpenFloorplan}>
+              {plan ? '查看并修改户型' : '上传户型图'}
+            </Button>
+          </div>
+        )}
         <h2>
           实际面积
           {summary && (
@@ -474,17 +471,7 @@ export default function PropertyExtras({
         </label>
         {plan && (
           <>
-            <a
-              href={`/api/images/${plan.image}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <img
-                className="full-image"
-                src={`/api/images/${plan.image}`}
-                alt="户型图，点击放大"
-              />
-            </a>
+            <LocalExtraImage id={plan.image} className="full-image" alt="户型图，点击放大" />
             <details>
               <summary>只识别户型区域</summary>
               <p className="secondary">
@@ -528,9 +515,7 @@ export default function PropertyExtras({
                       fileRef.current ||
                       new File(
                         [
-                          await (
-                            await fetch(`/api/images/${plan.image}`)
-                          ).blob(),
+                          await getLocalImageBlob(plan.image),
                         ],
                         'floorplan.png',
                         { type: 'image/png' },
@@ -593,28 +578,6 @@ export default function PropertyExtras({
                       })
                     }
                   />
-                  <label>
-                    <input
-                      disabled={disabled}
-                      type="checkbox"
-                      checked={room.included}
-                      onChange={(e) =>
-                        onChange({
-                          ...property,
-                          floorPlan: {
-                            ...plan,
-                            confirmed: false,
-                            rooms: plan.rooms.map((r) =>
-                              r.id === room.id
-                                ? { ...r, included: e.target.checked }
-                                : r,
-                            ),
-                          },
-                        })
-                      }
-                    />
-                    计入
-                  </label>
                   <Button
                     disabled={disabled}
                     variant="ghost"
@@ -660,7 +623,7 @@ export default function PropertyExtras({
               添加房间
             </Button>
             <p className="secondary">
-              修改房间面积或“计入”状态后，实际面积和得房率会立即更新。
+              实际面积按未删除且有数值的房间自动合计。
             </p>
           </>
         )}

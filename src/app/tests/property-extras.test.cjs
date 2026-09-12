@@ -126,8 +126,13 @@ assert.deepEqual(actualAreaSummary('59.27', livePlan, ''), {
 });
 livePlan.rooms[0].included = false;
 assert.deepEqual(actualAreaSummary('59.27', livePlan, ''), {
-  total: 5,
-  rate: 8.44,
+  total: 16.2,
+  rate: 27.33,
+});
+livePlan.rooms.push({ id: '3', name: '新增房间', area: '', included: true });
+assert.deepEqual(actualAreaSummary('59.27', livePlan, ''), {
+  total: 16.2,
+  rate: 27.33,
 });
 const p = {
   ...newProperty(),

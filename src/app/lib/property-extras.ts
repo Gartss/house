@@ -89,12 +89,10 @@ export function actualAreaSummary(
 }
 export function recognizedAreaTotal(plan?: FloorPlan) {
   if (!plan?.rooms.length) return null;
-  const rooms = plan.rooms.filter((r) => r.included);
-  if (
-    !rooms.length ||
-    rooms.some((r) => !Number.isFinite(Number(r.area)) || Number(r.area) <= 0)
-  )
-    return null;
+  const rooms = plan.rooms.filter(
+    (room) => Number.isFinite(Number(room.area)) && Number(room.area) > 0,
+  );
+  if (!rooms.length) return null;
   return Number(rooms.reduce((sum, r) => sum + Number(r.area), 0).toFixed(2));
 }
 export function parseRooms(text: string): RoomArea[] {
