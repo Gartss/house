@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { emptyState, type HouseState, validateState } from './model';
+import { sha256Hex } from './image-hash';
 
 const STATE_KEY = 'house.local.state.v1';
 const DB_NAME = 'house-local-v1';
@@ -23,7 +24,10 @@ function openDb() {
 async function dbGet(id: string): Promise<Blob | undefined> {
   const db = await openDb();
   return new Promise((resolve, reject) => {
-    const request = db.transaction(IMAGE_STORE).objectStore(IMAGE_STORE).get(id);
+    const request = db
+      .transaction(IMAGE_STORE)
+      .objectStore(IMAGE_STORE)
+      .get(id);
     request.onsuccess = () => resolve(request.result as Blob | undefined);
     request.onerror = () => reject(request.error);
   });
@@ -42,10 +46,7 @@ async function dbPut(id: string, blob: Blob) {
 }
 
 export async function putLocalImage(blob: Blob) {
-  const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
-  const id = Array.from(new Uint8Array(digest), (value) =>
-    value.toString(16).padStart(2, '0'),
-  ).join('');
+  const id = await sha256Hex(await blob.arrayBuffer());
   await dbPut(id, blob);
   return id;
 }
