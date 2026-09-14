@@ -1,5 +1,13 @@
 # 阿里云 ECS 部署检查记录
 
+## 2026-09-14 房源导入与核对交互更新
+
+- 发布镜像：`house-app:20260914-review-controls`，对应代码提交 `05c0ae8`。
+- 更新内容：完成 PDF/图片统一导入、识别字段修复、导入与核对页面交互及列表/筛选/对比界面修复。
+- 数据备份：`/opt/house-backups/house-data-before-20260914-review-controls.tar.gz`；继续挂载 `/opt/house-data:/data`。
+- 候选容器验证通过：独立端口主页 HTTP 200、未登录 `/api/state` HTTP 401、重启次数 0。
+- 切换后 ECS 本机及公网 80、8080 主页均 HTTP 200，未登录 `/api/state` 均 HTTP 401；正式容器重启次数 0。
+
 日期：2026-09-09
 
 - 部署方案：方案 B，应用、数据库和图片均保存在用户指定的阿里云 ECS。
