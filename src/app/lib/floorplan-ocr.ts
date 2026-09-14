@@ -259,8 +259,9 @@ export async function recognizeFloorPlan(
   file: Blob,
   image: string,
   text: string,
+  force = false,
 ): Promise<FloorPlan | undefined> {
-  if (!/户\s*型\s*图|使\s*用\s*面\s*积|户\s*型|房\s*型/.test(text))
+  if (!force && !/户\s*型\s*图|使\s*用\s*面\s*积|户\s*型|房\s*型/.test(text))
     return undefined;
   const bitmap = await createImageBitmap(file);
   const texts = [text];
@@ -300,7 +301,13 @@ export async function recognizeFloorPlan(
       scale: 5,
     });
     const tall = cropToCanvas({ x: 0.36, y: 0.07, w: 0.3, h: 0.36, scale: 5 });
-    for (const canvas of [broad, tight, tall]) {
+    const reportPlan = force
+      ? cropToCanvas({ x: 0.58, y: 0.27, w: 0.26, h: 0.31, scale: 8 })
+      : null;
+    const canvases = force
+      ? [reportPlan!]
+      : [broad, tight, tall];
+    for (const canvas of canvases) {
       await worker.setParameters({ tessedit_pageseg_mode: '11' });
       texts.push((await worker.recognize(canvas)).data.text);
     }
@@ -313,10 +320,14 @@ export async function recognizeFloorPlan(
       tessedit_pageseg_mode: '6',
       tessedit_char_whitelist: '0123456789.m²',
     });
-    areaTexts.push(
-      (await worker.recognize(tight)).data.text,
-      (await worker.recognize(tall)).data.text,
-    );
+    if (force) {
+      areaTexts.push((await worker.recognize(reportPlan!)).data.text);
+    } else {
+      areaTexts.push(
+        (await worker.recognize(tight)).data.text,
+        (await worker.recognize(tall)).data.text,
+      );
+    }
   } finally {
     bitmap.close();
     await worker.setParameters({

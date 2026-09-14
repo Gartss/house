@@ -4,6 +4,7 @@ import { localDateValue } from './date';
 // Normalize typography only; never repair uncertain address characters by guessing.
 const normalize = (text: string) =>
   text
+    .normalize('NFKC')
     .replace(/[ \t\r\u00a0]/g, '')
     .replace(/[／丨|]/g, '/')
     .replace(/[，]/g, ',')
@@ -76,6 +77,16 @@ function locationValue(text: string) {
     }
   }
   return null;
+}
+function reportTitle(lines: string[]) {
+  for (const line of lines.slice(0, 12)) {
+    if (/[：:]/.test(line)) continue;
+    const title = line.trim().match(
+      /^([\u4e00-\u9fffA-Za-z0-9·-]{1,28}(?:弄|村|苑|小区|公寓|路|街|号))/,
+    )?.[1];
+    if (title) return title;
+  }
+  return '';
 }
 function semanticArea(text: string) {
   const labeled = text.match(
@@ -164,7 +175,9 @@ export function parseScreenshot(
   if (entries.length) return entries;
   const p = newProperty();
   p.images = [image];
-  p.name = compact.match(/小区[“"：:]?([^\n(（》]+)[(（]/)?.[1] || '';
+  p.name =
+    compact.match(/小区[“"：:]?([^\n(（》]+)[(（]/)?.[1] ||
+    reportTitle(lines);
   applySemanticFields(p, compact, now);
   const location = compact.match(
     /小区[^\n]*[（(]([^:：·()（）]+)[:：·]([^()（）]+)[）)]/,

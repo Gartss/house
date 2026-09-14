@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import ErrorNotice from '@/components/error-notice';
+import HouseDatePicker from '@/components/house-date-picker';
+import HouseSelect from '@/components/house-select';
 import {
   Table,
   TableBody,
@@ -46,6 +48,7 @@ import {
 } from '@/lib/property-match';
 import { newId } from '@/lib/id';
 import { errorMessage } from '@/lib/error-message';
+import { IMPORT_ACCEPT, prepareImportFiles } from '@/lib/import-files';
 import {
   clearLocalData,
   getLocalImageBlob,
@@ -81,6 +84,7 @@ import {
   PaintRoller,
   Building2,
   CircleCheck,
+  CircleX,
   ArrowDown,
   BarChart3,
 } from 'lucide-react';
@@ -113,6 +117,7 @@ export default function HouseApp() {
   const [detailEditing, setDetailEditing] = useState(false);
   const [importFiles, setImportFiles] = useState<Array<{ name: string; size: string }>>([]);
   const [importDone, setImportDone] = useState(false);
+  const [importFailed, setImportFailed] = useState(false);
   const [profileSheet, setProfileSheet] = useState<'privacy' | 'about' | ''>('');
   const [floorplanReturn, setFloorplanReturn] = useState<'detail' | 'edit'>('detail');
   const [edit, setEdit] = useState<Property | null>(null);
@@ -145,6 +150,8 @@ export default function HouseApp() {
   const [districtFilter, setDistrictFilter] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
   const backupInput = useRef<HTMLInputElement>(null);
+  const shellRef = useRef<HTMLElement>(null);
+  const reviewReupload = useRef<(() => void) | null>(null);
   const mutex = useRef(false);
   const importCancelled = useRef(false);
   const importProgressRef = useRef(0);
@@ -161,6 +168,9 @@ export default function HouseApp() {
   useEffect(() => {
     load();
   }, []);
+  useEffect(() => {
+    shellRef.current?.scrollTo({ top: 0, left: 0 });
+  }, [page]);
   async function save(next: HouseState, deletedPropertyIds: string[] = []) {
     if (mutex.current) return false;
     mutex.current = true;
@@ -269,14 +279,40 @@ export default function HouseApp() {
   }
   async function importImages(files: FileList | null, replaceExisting = false) {
     if (!files || busy) return;
-    const fileList = Array.from(files);
+    const selectedFiles = Array.from(files);
     importCancelled.current = false;
-    setImportFiles(fileList.map((file) => ({
+    setImportFailed(false);
+    setImportFiles(selectedFiles.map((file) => ({
       name: file.name,
       size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
     })));
     setImportDone(false);
-    if (!replaceExisting) setPage('import');
+    setPage('import');
+    setBusy(true);
+    importProgressRef.current = 0;
+    setImportProgress(0);
+    setImportProgressLabel('正在准备图片和 PDF');
+    let fileList: Awaited<ReturnType<typeof prepareImportFiles>>;
+    try {
+      fileList = await prepareImportFiles(selectedFiles, (name, page, total) => {
+        setImportProgressLabel(`正在转换 ${name} · 第 ${page}/${total} 页`);
+      });
+    } catch (e) {
+      setBusy(false);
+      setImportFailed(true);
+      setErrorMessage(`导入未开始：${errorMessage(e)}`);
+      if (fileInput.current) fileInput.current.value = '';
+      return undefined;
+    }
+    if (importCancelled.current) {
+      setBusy(false);
+      if (fileInput.current) fileInput.current.value = '';
+      return undefined;
+    }
+    setImportFiles(fileList.map(({ file }) => ({
+      name: file.name,
+      size: `${(file.size / 1024 / 1024).toFixed(1)} MB`,
+    })));
     const totalFiles = fileList.length;
     let currentFileIndex = 0;
     const updateImportProgress = (localProgress: number, label: string) => {
@@ -289,11 +325,10 @@ export default function HouseApp() {
       setImportProgress(value);
       setImportProgressLabel(label);
     };
-    setBusy(true);
     importProgressRef.current = 0;
     setImportProgress(0);
     setImportProgressLabel(
-      totalFiles === 1 ? '准备导入图片' : `准备导入 ${totalFiles} 张图片`,
+      totalFiles === 1 ? '准备导入文件' : `准备导入 ${totalFiles} 页/张`,
     );
     let next = copy(state);
     try {
@@ -312,14 +347,14 @@ export default function HouseApp() {
       });
       importWorker.current = worker;
       try {
-        for (const [index, file] of fileList.entries()) {
+        for (const [index, prepared] of fileList.entries()) {
+          const { file } = prepared;
           if (importCancelled.current) return undefined;
           currentFileIndex = index;
           updateImportProgress(
             0.02,
             `正在上传第 ${index + 1}/${totalFiles} 张`,
           );
-          if (file.size > 12 * 1024 * 1024) throw Error('图片需小于12MB');
           const id = await putLocalImage(file);
           if (importCancelled.current) return undefined;
           updateImportProgress(
@@ -336,9 +371,10 @@ export default function HouseApp() {
             updateImportProgress(1, `第 ${index + 1}/${totalFiles} 张已存在`);
             continue;
           }
-          let text = '';
+          let text = prepared.pdfText;
           try {
-            text = (await worker.recognize(file)).data.text;
+            const recognizedText = (await worker.recognize(file)).data.text;
+            text = [prepared.pdfText, recognizedText].filter(Boolean).join('\n');
             updateImportProgress(
               0.65,
               `已识别第 ${index + 1}/${totalFiles} 张`,
@@ -396,6 +432,7 @@ export default function HouseApp() {
                 file,
                 id,
                 text,
+                prepared.source === 'pdf',
               );
             } catch {
               setErrorMessage('户型面积未完整识别，请在核对页补充。');
@@ -433,11 +470,12 @@ export default function HouseApp() {
       return saved ? next : undefined;
     } catch (e) {
       if (importCancelled.current) return undefined;
+      setImportFailed(true);
       setBusy(false);
       if (next.drafts.length > state.drafts.length)
         return (await save(next)) ? next : undefined;
       setErrorMessage(
-        `导入未全部完成：${errorMessage(e)}。可重新选择截图重试。`,
+        `导入未全部完成：${errorMessage(e)}。可重新选择图片或 PDF 重试。`,
       );
       return undefined;
     } finally {
@@ -576,14 +614,14 @@ export default function HouseApp() {
     <section className="panel form-section"><h2>基本信息</h2><div className="edit-grid">
       <label className="wide">小区 / 地址<Input disabled={busy} value={edit.name} onChange={(e) => setEdit({...edit,name:e.target.value})}/></label>
       <div className="location-pair">
-        <label>区域<select className="location-select" disabled={busy} value={edit.region || ''} onChange={(e) => setEdit({...edit,region:e.target.value,district:''})}><option value="">请选择区域</option>{LOCATION_REGIONS.map((value)=><option key={value}>{value}</option>)}</select></label>
-        <label>板块<select className="location-select" disabled={busy} value={edit.district || ''} onChange={(e) => setEdit({...edit,district:e.target.value})}><option value="">请选择板块</option>{(edit.region ? LOCATION_DATA[edit.region] || LOCATION_DISTRICTS : LOCATION_DISTRICTS).map((value)=><option key={value}>{value}</option>)}</select></label>
+        <label>区域<HouseSelect className="location-select" disabled={busy} value={edit.region || ''} placeholder="请选择区域" options={LOCATION_REGIONS} onChange={(value) => setEdit({...edit,region:value,district:''})}/></label>
+        <label>板块<HouseSelect className="location-select" disabled={busy} value={edit.district || ''} placeholder="请选择板块" options={edit.region ? LOCATION_DATA[edit.region] || LOCATION_DISTRICTS : LOCATION_DISTRICTS} onChange={(value) => setEdit({...edit,district:value})}/></label>
       </div>
     </div></section>
     <section className="panel form-section"><h2>价格</h2><div className="edit-grid">
       <label>总价（万元）<Input inputMode="decimal" value={price} placeholder={latestQuote(edit)?.amount ? String(latestQuote(edit)!.amount) : '请输入'} onChange={(e)=>setPrice(e.target.value)}/></label>
       <label>单价（元/㎡）<Input inputMode="decimal" value={edit.unitPrice || ''} placeholder={priceSummary(edit).unit ? String(Math.round(priceSummary(edit).unit!)) : '请输入'} onChange={(e)=>setEdit({...edit,unitPrice:e.target.value})}/></label>
-      <label className="wide">报价日期（未知可空）<Input type="date" value={date} onChange={(e)=>setDate(e.target.value)}/></label>
+      <label className="wide">报价日期（未知可空）<HouseDatePicker value={date} onChange={setDate}/></label>
     </div></section>
     <section className="panel form-section"><h2>户型与房况</h2><div className="edit-grid">
       {fields.filter(([key]) => ['layout','area','floor','direction','year','code','decoration','lift'].includes(key)).map(([key,label]) => <label key={key}>{label}<PropertyFieldControl field={key} label={label} disabled={busy} value={edit[key] || ''} onChange={(value)=>setEdit({...edit,[key]:value})}/></label>)}
@@ -602,11 +640,7 @@ export default function HouseApp() {
       </label>
       <label>
         报价日期（未知可空）
-        <Input
-          type="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
-        />
+        <HouseDatePicker value={date} onChange={setDate} />
       </label>
     </div>
   );
@@ -632,7 +666,7 @@ export default function HouseApp() {
     districtFilter,
   ].filter(Boolean).length;
   return (
-    <main className={`house-shell${filterOpen ? ' filter-active' : ''}`}>
+    <main ref={shellRef} className={`house-shell screen-${page}${filterOpen ? ' filter-active' : ''}`}>
       <div className={`utility-bar page-${page}`}>
         {page === 'list' ? (
           <>
@@ -738,6 +772,16 @@ export default function HouseApp() {
                   <Pencil size={18} /> 编辑
                 </Button>
               )}
+              {page === 'review' && (
+                <Button
+                  className="review-reupload-button"
+                  variant="ghost"
+                  disabled={busy}
+                  onClick={() => reviewReupload.current?.()}
+                >
+                  重新上传
+                </Button>
+              )}
               {(page === 'floorplan' || page === 'community') && <Button variant="ghost" onClick={async () => { await saveProperty(); setDetailEditing(page === 'floorplan' && floorplanReturn === 'edit'); }}>完成</Button>}
             </div>
           )}
@@ -747,7 +791,7 @@ export default function HouseApp() {
                 ref={fileInput}
                 className="hidden"
                 type="file"
-                accept="image/png,image/jpeg,image/webp"
+                accept={IMPORT_ACCEPT}
                 multiple
                 onChange={(e) => importImages(e.target.files)}
               />
@@ -782,8 +826,8 @@ export default function HouseApp() {
                 >
                   {sort === 'price-asc' ? '总价 ↑' : sort === 'price-desc' ? '总价 ↓' : '总价'}
                 </button>
-                <label className="sort-control"><select aria-label="户型筛选" value={layoutFilter} onChange={(e) => setLayoutFilter(e.target.value)}><option value="">户型</option>{Array.from(new Set(state.properties.map((p) => p.layout.replace(/\s/g, '')).filter(Boolean))).sort((a,b) => a.localeCompare(b,'zh-CN',{numeric:true})).map((value) => <option key={value}>{value}</option>)}</select></label>
-                <label className="sort-control"><select aria-label="区域筛选" value={regionFilter} onChange={(e) => { setRegionFilter(e.target.value); setDistrictFilter(''); }}><option value="">区域</option>{Array.from(new Set(state.properties.map((p) => p.region).filter(Boolean))).sort().map((value) => <option key={value}>{value}</option>)}</select></label>
+                <HouseSelect className="sort-control" ariaLabel="户型筛选" value={layoutFilter} placeholder="户型" options={Array.from(new Set(state.properties.map((p) => p.layout.replace(/\s/g, '')).filter(Boolean))).sort((a,b) => a.localeCompare(b,'zh-CN',{numeric:true}))} onChange={setLayoutFilter} />
+                <HouseSelect className="sort-control" ariaLabel="区域筛选" value={regionFilter} placeholder="区域" options={Array.from(new Set(state.properties.map((p) => p.region).filter((value): value is string => !!value))).sort()} onChange={(value) => { setRegionFilter(value); setDistrictFilter(''); }} />
                 <div className="filter-panel">
                   <button type="button" onClick={() => setFilterOpen(true)}>
                     更多
@@ -803,39 +847,18 @@ export default function HouseApp() {
                     <div className="compact-filters">
                       <label>
                         区域
-                        <select
-                          className="location-select"
-                          value={regionFilter}
-                          onChange={(e) => {
-                            setRegionFilter(e.target.value);
-                            setDistrictFilter('');
-                          }}
-                        >
-                          <option value="">全部区域</option>
-                          {Array.from(
+                        <HouseSelect className="location-select" value={regionFilter} placeholder="全部区域" options={Array.from(
                             new Set(
                               state.properties
                                 .map((p) => p.region)
-                                .filter(Boolean),
+                                .filter((value): value is string => !!value),
                             ),
                           )
-                            .sort()
-                            .map((v) => (
-                              <option key={v} value={v}>
-                                {v}
-                              </option>
-                            ))}
-                        </select>
+                            .sort()} onChange={(value) => { setRegionFilter(value); setDistrictFilter(''); }} />
                       </label>
                       <label>
                         板块
-                        <select
-                          className="location-select"
-                          value={districtFilter}
-                          onChange={(e) => setDistrictFilter(e.target.value)}
-                        >
-                          <option value="">全部板块</option>
-                          {Array.from(
+                        <HouseSelect className="location-select" value={districtFilter} placeholder="全部板块" options={Array.from(
                             new Set(
                               state.properties
                                 .filter(
@@ -843,16 +866,10 @@ export default function HouseApp() {
                                     !regionFilter || p.region === regionFilter,
                                 )
                                 .map((p) => p.district)
-                                .filter(Boolean),
+                                .filter((value): value is string => !!value),
                             ),
                           )
-                            .sort()
-                            .map((v) => (
-                              <option key={v} value={v}>
-                                {v}
-                              </option>
-                            ))}
-                        </select>
+                            .sort()} onChange={setDistrictFilter} />
                       </label>
                       <div className="range-filter">
                         <span>总价（万元）</span>
@@ -927,13 +944,7 @@ export default function HouseApp() {
                       </div>
                       <label>
                         户型
-                        <select
-                          className="location-select"
-                          value={layoutFilter}
-                          onChange={(e) => setLayoutFilter(e.target.value)}
-                        >
-                          <option value="">全部户型</option>
-                          {Array.from(
+                        <HouseSelect className="location-select" value={layoutFilter} placeholder="全部户型" options={Array.from(
                             new Set(
                               state.properties
                                 .map((p) => p.layout.replace(/\s/g, ''))
@@ -942,13 +953,7 @@ export default function HouseApp() {
                           )
                             .sort((a, b) =>
                               a.localeCompare(b, 'zh-CN', { numeric: true }),
-                            )
-                            .map((v) => (
-                              <option key={v} value={v}>
-                                {v}
-                              </option>
-                            ))}
-                        </select>
+                            )} onChange={setLayoutFilter} />
                       </label>
                     </div>
                     <Button
@@ -986,14 +991,16 @@ export default function HouseApp() {
                   <p>导入后先核对，缺少的信息可以之后再补。</p>
                 </section>
               ) : (
-                <PropertyTable
-                  theme="price"
-                  onSort={setSort}
-                  properties={visible}
-                  selected={selected}
-                  setSelected={setSelected}
-                  onOpen={open}
-                />
+                <div className="property-list-scroll">
+                  <PropertyTable
+                    theme="price"
+                    onSort={setSort}
+                    properties={visible}
+                    selected={selected}
+                    setSelected={setSelected}
+                    onOpen={open}
+                  />
+                </div>
               )}
               <div className="table-meta">
                 <span>{visible.length} 套房源</span>
@@ -1019,7 +1026,7 @@ export default function HouseApp() {
                   onClick={() => fileInput.current?.click()}
                 >
                   <Upload />
-                  <span><strong>导入房源</strong><small>从相册截图识别</small></span>
+                  <span><strong>导入房源</strong><small>支持相册截图和 PDF 导入</small></span>
                 </Button>
               </div>
             </>
@@ -1078,17 +1085,19 @@ export default function HouseApp() {
               onSave={save}
               onReupload={(files) => importImages(files, true)}
               onDone={() => setPage('list')}
+              reuploadControlRef={reviewReupload}
             />
           )}
           {page === 'import' && (
             <section className="import-page">
               {messageKind === 'error' && message && <ErrorNotice>{message}</ErrorNotice>}
-              <div className="import-hero">
-                <Upload size={46} />
+              <div className={`import-hero${importDone ? ' is-success' : ''}${importFailed ? ' is-failure' : ''}`}>
+                {importDone ? <CircleCheck size={46} /> : importFailed ? <CircleX size={46} /> : <Upload size={46} />}
                 <strong>{importProgress ?? 0}%</strong>
                 <div className="import-progress-track"><div className="import-progress-value" style={{ width: `${importProgress ?? 0}%` }} /></div>
-                <h2>{importDone ? '房源信息识别完成' : '正在识别房源信息'}</h2>
-                <p>{importFiles.length ? `共 ${importFiles.length} 张图片` : '正在准备图片'}{importProgressLabel ? ` · ${importProgressLabel}` : ''}</p>
+                <h2>{importDone ? '房源信息识别完成' : importFailed ? '导入未完成' : '正在识别房源信息'}</h2>
+                <p>{importFiles.length ? `共 ${importFiles.length} 页/张` : '正在准备文件'}{importProgressLabel ? ` · ${importProgressLabel}` : ''}</p>
+                {(importDone || importFailed) && <div className="import-result-badge">{importDone ? '已完成，可进入核对' : '请返回重新选择文件'}</div>}
               </div>
               <div className="import-file-list">
                 {importFiles.map((file, index) => (
@@ -1105,7 +1114,7 @@ export default function HouseApp() {
                   setPage('list');
                 }
               }}>
-                {importDone ? '去核对信息' : '取消导入'}
+                {importDone ? '去核对信息' : importFailed ? '返回重新选择' : '取消导入'}
               </Button>
             </section>
           )}
@@ -1487,7 +1496,7 @@ function Comparison({
     <label className="check-label"><Checkbox checked={different} onCheckedChange={(value) => setDifferent(!!value)} /><span><b>只看差异</b><small>隐藏内容相同的项目</small></span></label>
     <section className="compare-matrix-card"><div className="compare-matrix-scroll" role="region" aria-label="房源横向对比表，可左右滑动" tabIndex={0}><table className="compare-matrix">
       <thead><tr><th>对比项</th>{properties.map((property, index) => <th key={property.id} style={{ '--series-color': colors[index % colors.length] } as CSSProperties}><div className="matrix-property-heading"><i /><button onClick={() => onOpen(property)}><strong>{property.name}</strong><span>{latestQuote(property)?.amount ?? '—'}万</span></button><button className="matrix-remove" aria-label={`移除${property.name}`} onClick={() => onRemove(property.id)}><Trash2 /></button></div></th>)}</tr></thead>
-      <tbody>{visibleGroups.map((group) => <Fragment key={group.title}><tr className="compare-section-row"><th colSpan={properties.length + 1}>{group.title}</th></tr>{group.rows.map((row) => <tr key={row.label} className={new Set(row.values).size > 1 ? 'is-different' : ''}><th><span>{row.label}</span>{row.trendMode && canOpenTrend(row.trendMode) && <button className="matrix-trend-link" onClick={() => onTrend(row.trendMode)}><Search />查看走势</button>}</th>{properties.map((property, index) => <td key={property.id}><span>{row.values[index]}</span></td>)}</tr>)}</Fragment>)}</tbody>
+      <tbody>{visibleGroups.map((group) => <Fragment key={group.title}><tr className="compare-section-row"><th scope="rowgroup">{group.title}</th><td colSpan={properties.length} aria-hidden="true" /></tr>{group.rows.map((row) => <tr key={row.label} className={new Set(row.values).size > 1 ? 'is-different' : ''}><th><span>{row.label}</span>{row.trendMode && canOpenTrend(row.trendMode) && <button className="matrix-trend-link" onClick={() => onTrend(row.trendMode)}><Search />查看走势</button>}</th>{properties.map((property, index) => <td key={property.id}><span>{row.values[index]}</span></td>)}</tr>)}</Fragment>)}</tbody>
     </table></div></section>
     {!visibleGroups.length && <p className="secondary">当前记录的信息没有差异。</p>}
   </section>;

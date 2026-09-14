@@ -3,6 +3,7 @@ import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ErrorNotice from '@/components/error-notice';
+import HouseDatePicker from '@/components/house-date-picker';
 import { HouseState, Property } from '@/lib/model';
 import {
   actualAreaSummary,
@@ -322,14 +323,9 @@ export default function PropertyExtras({
               </label>
               <label>
                 统计时间
-                <Input
-                  type="date"
-                  value={
-                    /^\d{4}-\d{2}-\d{2}$/.test(quote.period) ? quote.period : ''
-                  }
-                  onChange={(e) => {
-                    setQuote({ ...quote, period: e.target.value });
-                  }}
+                <HouseDatePicker
+                  value={/^\d{4}-\d{2}-\d{2}$/.test(quote.period) ? quote.period : ''}
+                  onChange={(value) => setQuote({ ...quote, period: value })}
                 />
               </label>
             </div>

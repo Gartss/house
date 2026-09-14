@@ -65,21 +65,21 @@ export async function applyReview(
     for (const [i, r] of rows.entries()) {
       if (!r.checked) continue;
       if (!r.property.name.trim() && !r.target)
-        throw Error(`第${i + 1}行：请填写小区 / 地址`);
+        throw Error(`第${i + 1}套：请填写小区 / 地址`);
       if (r.target && !state.properties.some((p) => p.id === r.target))
-        throw Error(`第${i + 1}行：关联房源不存在`);
+        throw Error(`第${i + 1}套：关联房源不存在`);
       if (
         r.amount &&
         (!Number.isFinite(Number(r.amount)) || Number(r.amount) <= 0)
       )
-        throw Error(`第${i + 1}行：总价必须大于0`);
+        throw Error(`第${i + 1}套：总价必须大于0`);
       if (
         r.date &&
         (!/^\d{4}-\d{2}-\d{2}$/.test(r.date) ||
           isNaN(Date.parse(r.date)) ||
           new Date(r.date).toISOString().slice(0, 10) !== r.date)
       )
-        throw Error(`第${i + 1}行：报价日期无效`);
+        throw Error(`第${i + 1}套：报价日期无效`);
     }
   for (const r of rows) {
     const draft = next.drafts.find((d) => d.id === r.draftId);

@@ -100,13 +100,19 @@ export function parseRooms(text: string): RoomArea[] {
   const rooms: RoomArea[] = [];
   const pattern =
     /(厨房|卫生间|卫|客厅|餐厅|卧室|主卧|次卧|阳台|书房|储藏室|过道|玄关)([A-Z\d]?)[^\d\u4e00-\u9fff]{0,18}(\d+(?:\.\d+)?)\s*(?:㎡|m[²2i]?|平米)/gi;
-  for (const match of clean.matchAll(pattern))
+  for (const match of clean.matchAll(pattern)) {
+    const area = Number(match[3]);
+    // OCR occasionally drops a decimal point in floor-plan labels (for
+    // example, reading 15.4㎡ as 154㎡). Never let that become a bogus
+    // whole-home area; leave it for the user to verify instead.
+    if (!Number.isFinite(area) || area <= 0 || area > 80) continue;
     rooms.push({
       id: newId(),
       name: match[1] + match[2],
       area: match[3],
       included: !['阳台'].includes(match[1]),
     });
+  }
   return rooms;
 }
 export function parseCommunityQuote(text: string) {

@@ -1,6 +1,7 @@
 'use client';
 
 import { Input } from '@/components/ui/input';
+import HouseSelect from '@/components/house-select';
 import { DECORATION_OPTIONS, LIFT_OPTIONS, normalizedLift } from '@/lib/model';
 
 export default function PropertyFieldControl({
@@ -21,22 +22,7 @@ export default function PropertyFieldControl({
   if (field === 'decoration' || field === 'lift') {
     const selected = field === 'lift' ? normalizedLift(value) : value;
     const options = field === 'decoration' ? DECORATION_OPTIONS : LIFT_OPTIONS;
-    return (
-      <select
-        className="location-select"
-        disabled={disabled}
-        aria-label={ariaLabel}
-        value={selected}
-        onChange={(event) => onChange(event.target.value)}
-      >
-        <option value="">请选择{label}</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    );
+    return <HouseSelect className="location-select" disabled={disabled} ariaLabel={ariaLabel} value={selected} placeholder={`请选择${label}`} options={[...options]} onChange={onChange} />;
   }
 
   return (

@@ -11,5 +11,8 @@ assert.equal(parseScreenshot('低楼层\n建面 50㎡','x',now)[0].floor,'低楼
 assert.equal(parseScreenshot('售价 户型 建筑 面积\n189万 1室1厅 5O.15rr','x',now)[0].area,'50.15');
 assert.equal(parseScreenshot('155万 1室1厅 9.57m²\n小区：梅陇二村（闵行：梅陇）','x',now)[0].area,'');
 assert.equal(parseScreenshot('电梯：无','x',now)[0].lift,'否');
+const report=parseScreenshot('益文路79弄\n1室1厅/建筑面积54.1m²/1995(仅供参考)\n房屋总价\n200万\n房屋朝向：南\n所在楼层：中楼层(共6层)','x',now)[0];assert.equal(report.name,'益文路79弄');assert.equal(report.suggestedPrice,'200');assert.equal(report.direction,'南');
+assert.equal(parseScreenshot('益文路79弄 链家\n1室1厅/建筑面积54.1m²\n200万','x',now)[0].name,'益文路79弄');
+assert.equal(parseScreenshot('益⽂路79弄\n1室1厅/建筑⾯积54.1m²\n房屋朝向：南\n200万','x',now)[0].name,'益文路79弄');
 assert.equal(parseScreenshot('2 室 ] 厅 1 了\n户型','x',now)[0].layout,'2室1厅1卫');
 console.log('PASS: current screenshot four cards; grouped unit prices; slash/unit variants; no price crossing; discount excluded; unknown layout/date preserved.');
