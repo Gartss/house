@@ -32,7 +32,7 @@ export default function AuthForm() {
   }
   return (
     <section className="welcome auth-card">
-      <h2>{mode === 'login' ? '登录 House' : '注册 House 账号'}</h2>
+      <h2>{mode === 'login' ? '登录房得 Find' : '注册房得 Find 账号'}</h2>
       <form onSubmit={submit}>
         <label>
           账号

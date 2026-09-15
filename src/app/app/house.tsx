@@ -60,6 +60,10 @@ import {
   useLocalImageUrl,
 } from '@/lib/local-store';
 import {
+  recordAnonymousUse,
+  type UsageSummary,
+} from '@/lib/anonymous-usage';
+import {
   LOCATION_DATA,
   LOCATION_DISTRICTS,
   LOCATION_REGIONS,
@@ -100,6 +104,7 @@ function LocalImageLink({ id, children }: { id: string; children: ReactNode }) {
 export default function HouseApp() {
   const [state, setState] = useState<HouseState>(emptyState());
   const [ready, setReady] = useState(false);
+  const [usage, setUsage] = useState<UsageSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessageText] = useState('');
   const [messageKind, setMessageKind] = useState<'info' | 'error'>('info');
@@ -167,6 +172,7 @@ export default function HouseApp() {
   }
   useEffect(() => {
     load();
+    void recordAnonymousUse().then(setUsage);
   }, []);
   useEffect(() => {
     shellRef.current?.scrollTo({ top: 0, left: 0 });
@@ -506,7 +512,7 @@ export default function HouseApp() {
       );
       const a = document.createElement('a');
       a.href = url;
-      a.download = `House-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `房得-Find-${new Date().toISOString().slice(0, 10)}.json`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 10000);
       setMessage('备份已生成，请保存到文件。包含原图，请妥善保管。');
@@ -529,7 +535,7 @@ export default function HouseApp() {
         !b.images ||
         typeof b.images !== 'object'
       )
-        throw Error('不是有效的House备份');
+        throw Error('不是有效的房得 Find 备份');
       if (
         !(await ask(
           '将补充备份中当前不存在的房源和草稿；同编号的现有资料保持不变。继续恢复？',
@@ -670,7 +676,7 @@ export default function HouseApp() {
       <div className={`utility-bar page-${page}`}>
         {page === 'list' ? (
           <>
-            <div className="home-heading"><h1>我的看房</h1></div>
+            <div className="home-heading"><h1>房得 Find</h1></div>
             <Button
               className="round-add"
               aria-label="新建房源"
@@ -1123,7 +1129,7 @@ export default function HouseApp() {
               <h2 className="profile-section-title">数据管理</h2>
               <section className="panel settings-list profile-settings">
                 <button onClick={backup}><Database /><span><strong>导出备份</strong><small>保存房源、价格记录和图片</small></span><ChevronRight /></button>
-                <button onClick={() => backupInput.current?.click()}><Upload /><span><strong>导入备份</strong><small>从 House 备份文件恢复数据</small></span><ChevronRight /></button>
+                <button onClick={() => backupInput.current?.click()}><Upload /><span><strong>导入备份</strong><small>从房得 Find 备份文件恢复数据</small></span><ChevronRight /></button>
                 <button className="danger-row" onClick={async () => {
                   if (!(await ask('清空全部本地数据？\n房源、报价记录和保留的截图都会从这台设备删除。此操作无法撤销，建议先导出备份。'))) return;
                   await clearLocalData();
@@ -1136,9 +1142,9 @@ export default function HouseApp() {
               <h2 className="profile-section-title">隐私与应用</h2>
               <section className="panel settings-list profile-settings">
                 <button onClick={() => setProfileSheet('privacy')}><ShieldCheck /><span><strong>隐私政策</strong><small>了解本地数据和图片权限的使用方式</small></span><ChevronRight /></button>
-                <button onClick={() => setProfileSheet('about')}><HouseIcon /><span><strong>关于 House</strong><small>版本 1.0 · 看房记录与对比工具</small></span><ChevronRight /></button>
+                <button onClick={() => setProfileSheet('about')}><HouseIcon /><span><strong>关于房得 Find</strong><small>{usage ? `已有 ${usage.total} 个浏览器使用` : '版本 1.0 · 看房记录与对比工具'}</small></span><ChevronRight /></button>
               </section>
-              {profileSheet && <div className="profile-modal"><button className="profile-scrim" aria-label="关闭" onClick={() => setProfileSheet('')} /><section className="profile-sheet">{profileSheet === 'privacy' ? <><ShieldCheck className="sheet-icon"/><h2>你的数据由你保管</h2><p>房源信息、截图和价格记录默认只保存在这台设备中。House 不要求注册账号，也不会自动将资料上传到服务器。</p><div className="privacy-points"><span>本地保存</span><span>可导出备份</span></div></> : <><HouseIcon className="sheet-icon"/><h2>House</h2><p>用于整理看房资料、记录价格变化并对比候选房源。</p><div className="about-version"><span>当前版本</span><strong>1.0.0</strong></div></>}<Button variant="outline" onClick={() => setProfileSheet('')}>{profileSheet === 'privacy' ? '我知道了' : '完成'}</Button></section></div>}
+              {profileSheet && <div className="profile-modal"><button className="profile-scrim" aria-label="关闭" onClick={() => setProfileSheet('')} /><section className="profile-sheet">{profileSheet === 'privacy' ? <><ShieldCheck className="sheet-icon"/><h2>你的数据由你保管</h2><p>房源信息、截图和价格记录默认只保存在这台设备中。房得 Find 不要求注册账号，也不会自动将资料上传到服务器。</p><p>为了了解大概使用人数，房得 Find 会上传一个随机匿名编号和访问日期；不会上传房源、价格、截图或设备身份信息。</p><div className="privacy-points"><span>本地保存</span><span>匿名统计</span></div></> : <><HouseIcon className="sheet-icon"/><h2>房得 Find</h2><p>用于整理看房资料、记录价格变化并对比候选房源。</p>{usage && <div className="about-version"><span>累计使用</span><strong>{usage.total} 个浏览器</strong></div>}{usage && <div className="about-version"><span>今日活跃</span><strong>{usage.activeToday} 个</strong></div>}{usage && <div className="about-version"><span>近 7 日活跃</span><strong>{usage.active7} 个</strong></div>}<div className="about-version"><span>当前版本</span><strong>1.0.0</strong></div></>}<Button variant="outline" onClick={() => setProfileSheet('')}>{profileSheet === 'privacy' ? '我知道了' : '完成'}</Button></section></div>}
             </section>
           )}
         </>
