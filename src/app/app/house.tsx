@@ -33,6 +33,7 @@ import {
   fields,
   latestQuote,
   activeQuotes,
+  propertyRecency,
 } from '@/lib/model';
 import PropertyFieldControl from './property-field-control';
 import { priceSummary } from '@/lib/price-change';
@@ -207,6 +208,11 @@ export default function HouseApp() {
     resetForm();
     setDetailEditing(false);
     setPage('detail');
+  }
+  function openQuotePage() {
+    resetForm();
+    setDetailEditing(false);
+    setPage('quote');
   }
   async function saveProperty() {
     if (!edit || !edit.name.trim()) {
@@ -429,6 +435,31 @@ export default function HouseApp() {
               await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
             }
           }
+          if (
+            properties.length === 1 &&
+            /售\s*价/.test(text) &&
+            /户\s*型/.test(text) &&
+            /建\s*筑\s*面\s*积/.test(text) &&
+            (!properties[0].suggestedPrice ||
+              !properties[0].layout ||
+              !properties[0].area)
+          ) {
+            try {
+              const { recognizeDetailHeroFields } =
+                await import('@/lib/detail-hero-ocr');
+              const focused = await recognizeDetailHeroFields(worker, file);
+              if (!properties[0].suggestedPrice && focused.price)
+                properties[0].suggestedPrice = focused.price;
+              if (!properties[0].layout && focused.layout)
+                properties[0].layout = focused.layout;
+              if (!properties[0].area && focused.area)
+                properties[0].area = focused.area;
+              if (focused.text)
+                text = `${text}\n${focused.text}`.slice(0, 50000);
+            } catch {
+              await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
+            }
+          }
           if (properties.length === 1) {
             try {
               const { recognizeFloorPlan } =
@@ -608,7 +639,7 @@ export default function HouseApp() {
               ? (latestQuote(b)?.date || '').localeCompare(
                   latestQuote(a)?.date || '',
                 )
-              : 0,
+              : propertyRecency(b).localeCompare(propertyRecency(a)),
     );
   const visible = filtered;
   const reviewCount = state.drafts.reduce(
@@ -616,6 +647,11 @@ export default function HouseApp() {
     0,
   );
 
+  const priceSection = edit && <section className="panel form-section"><h2>价格</h2><div className="edit-grid">
+    <label>总价（万元）<Input inputMode="decimal" value={price} placeholder={latestQuote(edit)?.amount ? String(latestQuote(edit)!.amount) : '请输入'} onChange={(e)=>setPrice(e.target.value)}/></label>
+    <label>单价（元/㎡）<Input inputMode="decimal" value={edit.unitPrice || ''} placeholder={priceSummary(edit).unit ? String(Math.round(priceSummary(edit).unit!)) : '请输入'} onChange={(e)=>setEdit({...edit,unitPrice:e.target.value})}/></label>
+    <label className="wide">报价日期（未知可空）<HouseDatePicker value={date} onChange={setDate}/></label>
+  </div></section>;
   const form = edit && <div className="property-editor">
     <section className="panel form-section"><h2>基本信息</h2><div className="edit-grid">
       <label className="wide">小区 / 地址<Input disabled={busy} value={edit.name} onChange={(e) => setEdit({...edit,name:e.target.value})}/></label>
@@ -624,11 +660,7 @@ export default function HouseApp() {
         <label>板块<HouseSelect className="location-select" disabled={busy} value={edit.district || ''} placeholder="请选择板块" options={edit.region ? LOCATION_DATA[edit.region] || LOCATION_DISTRICTS : LOCATION_DISTRICTS} onChange={(value) => setEdit({...edit,district:value})}/></label>
       </div>
     </div></section>
-    <section className="panel form-section"><h2>价格</h2><div className="edit-grid">
-      <label>总价（万元）<Input inputMode="decimal" value={price} placeholder={latestQuote(edit)?.amount ? String(latestQuote(edit)!.amount) : '请输入'} onChange={(e)=>setPrice(e.target.value)}/></label>
-      <label>单价（元/㎡）<Input inputMode="decimal" value={edit.unitPrice || ''} placeholder={priceSummary(edit).unit ? String(Math.round(priceSummary(edit).unit!)) : '请输入'} onChange={(e)=>setEdit({...edit,unitPrice:e.target.value})}/></label>
-      <label className="wide">报价日期（未知可空）<HouseDatePicker value={date} onChange={setDate}/></label>
-    </div></section>
+    {priceSection}
     <section className="panel form-section"><h2>户型与房况</h2><div className="edit-grid">
       {fields.filter(([key]) => ['layout','area','floor','direction','year','code','decoration','lift'].includes(key)).map(([key,label]) => <label key={key}>{label}<PropertyFieldControl field={key} label={label} disabled={busy} value={edit[key] || ''} onChange={(value)=>setEdit({...edit,[key]:value})}/></label>)}
       <label>核验码<Input disabled={busy} value={edit.code} placeholder="选填" onChange={(e)=>setEdit({...edit,code:e.target.value})}/></label>
@@ -698,6 +730,8 @@ export default function HouseApp() {
           <div className="page-title"><h1>户型与实际面积</h1></div>
         ) : page === 'community' ? (
           <div className="page-title"><h1>小区成交价</h1></div>
+        ) : page === 'quote' ? (
+          <div className="page-title"><h1>记录报价</h1></div>
         ) : page === 'compare' ? (
           <div className="page-title"><h1>房源对比</h1></div>
         ) : page === 'compare-trend' ? (
@@ -752,8 +786,8 @@ export default function HouseApp() {
                 onClick={async () => {
                   if (
                     (page === 'review' ||
-                      (page === 'detail' && hasUnsavedDetailChanges)) &&
-                    !(await ask('返回列表？未保存的修改将放弃。'))
+                      ((page === 'detail' || page === 'quote') && hasUnsavedDetailChanges)) &&
+                    !(await ask(page === 'quote' ? '返回房源详情？未保存的报价将放弃。' : '返回列表？未保存的修改将放弃。'))
                   )
                     return;
                   if (page === 'floorplan') {
@@ -762,6 +796,10 @@ export default function HouseApp() {
                   } else if (page === 'community') {
                     setPage('detail');
                     setDetailEditing(false);
+                  } else if (page === 'quote') {
+                    if (savedEdit) setEdit(copy(savedEdit));
+                    resetForm();
+                    setPage('detail');
                   } else if (page === 'compare-trend') {
                     setPage('compare');
                   } else if (page === 'detail' && detailEditing && savedEdit) {
@@ -1077,9 +1115,27 @@ export default function HouseApp() {
               onToggleCompare={() => setSelected(selected.includes(edit.id) ? selected.filter((id) => id !== edit.id) : [...selected, edit.id])}
               onEdit={() => { setFloorplanReturn('detail'); setPage('floorplan'); }}
               onCommunity={() => setPage('community')}
-              onQuote={() => { setDetailEditing(true); setTimeout(() => document.querySelector<HTMLInputElement>('[aria-label="新增报价总价"]')?.focus(), 0); }}
+              onQuote={openQuotePage}
             />
           )}
+          {page === 'quote' && edit && <div className="quote-entry-page">
+            {priceSection}
+            <PropertyExtras
+              key={`quote-community-${edit.id}`}
+              property={edit}
+              onChange={setEdit}
+              state={state}
+              onSave={save}
+              busy={busy}
+              onBusy={setBusy}
+              onMessage={setMessage}
+              onlyCommunity
+            />
+            <div className="sticky-detail-actions">
+              <Button variant="outline" disabled={busy} onClick={() => { if (savedEdit) setEdit(copy(savedEdit)); resetForm(); setPage('detail'); }}>取消</Button>
+              <Button disabled={busy || !Number(price) || Number(price) <= 0} onClick={saveProperty}>保存报价</Button>
+            </div>
+          </div>}
           {page === 'floorplan' && edit && <PropertyExtras key={`floorplan-${edit.id}`} property={edit} onChange={setEdit} state={state} onSave={save} busy={busy} onBusy={setBusy} onMessage={setMessage} onlyArea />}
           {page === 'community' && edit && <PropertyExtras key={`community-${edit.id}`} property={edit} onChange={setEdit} state={state} onSave={save} busy={busy} onBusy={setBusy} onMessage={setMessage} onlyCommunity />}
           {page === 'review' && (
@@ -1440,11 +1496,16 @@ function MiniTrend({ property }: { property: Property }) {
     return <span className="trend-placeholder"><i /><i /></span>;
   const min = Math.min(...quotes.map((quote) => quote.amount));
   const max = Math.max(...quotes.map((quote) => quote.amount));
-  const points = quotes
-    .map((quote, index) => `${6 + index * (88 / Math.max(1, quotes.length - 1))},${35 - ((quote.amount - min) / (max - min || 1)) * 26}`)
-    .join(' ');
+  const chartPoints = quotes.map((quote, index) => ({
+    x: 6 + index * (88 / Math.max(1, quotes.length - 1)),
+    y: max === min
+      ? 21
+      : 35 - ((quote.amount - min) / (max - min)) * 26,
+  }));
+  const points = chartPoints.map(({ x, y }) => `${x},${y}`).join(' ');
   const down = quotes[quotes.length - 1].amount < quotes[0].amount;
-  return <svg className="mini-trend" viewBox="0 0 100 42" aria-hidden="true"><polyline points={points} fill="none" stroke={down ? '#15915d' : '#8491a5'} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+  const stroke = down ? '#15915d' : '#8491a5';
+  return <svg className="mini-trend" viewBox="0 0 100 42" aria-hidden="true"><polyline points={points} fill="none" stroke={stroke} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />{chartPoints.map(({ x, y }, index) => <circle key={index} cx={x} cy={y} r="2.8" fill={stroke} />)}</svg>;
 }
 function Comparison({
   properties,

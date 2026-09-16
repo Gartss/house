@@ -54,6 +54,8 @@ export async function applyReview(
   confirm: (text: string) => Promise<boolean>,
 ): Promise<HouseState> {
   const next = structuredClone(state);
+  const recentlyImportedIds: string[] = [];
+  const importedAt = new Date().toISOString();
   for (const draft of next.drafts)
     draft.properties = draft.properties.filter((p) =>
       rows.some((r) => r.draftId === draft.id && r.property.id === p.id),
@@ -109,6 +111,7 @@ export async function applyReview(
       });
     if (r.target) {
       const old = next.properties.find((x) => x.id === r.target)!;
+      old.importedAt = importedAt;
       for (const [key, label] of fields) {
         if (
           p[key] &&
@@ -140,12 +143,25 @@ export async function applyReview(
           (await confirm(`${old.name}：用本次核对的户型面积替换原明细？`)))
       )
         old.floorPlan = p.floorPlan;
+      if (!recentlyImportedIds.includes(old.id)) recentlyImportedIds.push(old.id);
     } else {
       if (next.properties.some((x) => x.id === p.id))
         throw Error('这套房已保存，请重新打开待核对列表');
+      p.importedAt = importedAt;
       next.properties.push(p);
+      recentlyImportedIds.push(p.id);
     }
     draft.properties = draft.properties.filter((x) => x.id !== p.id);
+  }
+  if (recentlyImportedIds.length) {
+    const imported = recentlyImportedIds
+      .map((id) => next.properties.find((property) => property.id === id))
+      .filter((property): property is Property => Boolean(property));
+    const importedIds = new Set(recentlyImportedIds);
+    next.properties = [
+      ...imported,
+      ...next.properties.filter((property) => !importedIds.has(property.id)),
+    ];
   }
   next.drafts = next.drafts.filter((d) => d.properties.length);
   return next;

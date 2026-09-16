@@ -2155,10 +2155,12 @@ body {
 }
 
 .mobile-grid tr {
-  min-height: 110px;
-  grid-template-columns: minmax(0, 1.3fr) 102px 88px;
+  min-height: 118px;
+  height: auto;
+  grid-template-columns: minmax(0, 1fr) 98px 78px;
   gap: 6px;
-  padding: 12px 10px;
+  padding: 14px 10px;
+  overflow: visible;
 }
 
 .mobile-grid td {
@@ -2178,6 +2180,8 @@ body {
 }
 
 .mobile-grid .property-name {
+  display: grid;
+  align-content: start;
   font-size: 17px;
 }
 
@@ -2188,6 +2192,7 @@ body {
 }
 
 .property-name em {
+  justify-self: start;
   margin-top: 5px;
   padding: 3px 7px;
   font-size: 10px;
@@ -2333,7 +2338,12 @@ body {
   color: #66736c;
   background: transparent;
 }
-.trend-open > svg { width: 15px; height: 15px; }
+.trend-open > .mini-trend {
+  width: 100%;
+  min-width: 0;
+  height: 42px;
+}
+.trend-open > svg:not(.mini-trend) { width: 15px; height: 15px; }
 
 /* Detail screen parity with the approved 393 px prototype. */
 .property-detail-view { padding-bottom: 72px; }

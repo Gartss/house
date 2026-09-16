@@ -15,6 +15,7 @@ export type Quote = {
 };
 export type Property = {
   id: string;
+  importedAt?: string;
   name: string;
   communityId?: string;
   floorPlan?: FloorPlan;
@@ -84,6 +85,13 @@ export const latestQuote = (p: Property) =>
         (b.date || '').localeCompare(a.date || '') ||
         b.createdAt.localeCompare(a.createdAt),
     )[0];
+export const propertyRecency = (property: Property) =>
+  property.importedAt ||
+  property.quotes
+    .map((quote) => quote.createdAt)
+    .filter(Boolean)
+    .sort((a, b) => b.localeCompare(a))[0] ||
+  '';
 export const fields = [
   ['name', '小区 / 地址'],
   ['region', '区域'],
@@ -137,6 +145,11 @@ export function validateState(value: unknown): value is HouseState {
     )
       return false;
     if (p.actualArea !== undefined && typeof p.actualArea !== 'string')
+      return false;
+    if (
+      p.importedAt !== undefined &&
+      (typeof p.importedAt !== 'string' || isNaN(Date.parse(p.importedAt)))
+    )
       return false;
     if (
       p.photos !== undefined &&

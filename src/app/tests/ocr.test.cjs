@@ -12,6 +12,7 @@ require.extensions['.ts'] = (m, p) =>
     p,
   );
 const { parseScreenshot } = require('../lib/ocr.ts');
+const { parseDetailHeroTexts } = require('../lib/detail-hero-ocr.ts');
 const now = new Date(2026, 8, 9);
 const raw = fs.readFileSync('../../work/ocr/current-text.txt', 'utf8');
 const p = parseScreenshot(raw, 'a'.repeat(64), now);
@@ -121,6 +122,19 @@ assert.equal(
 assert.equal(
   parseScreenshot('2 室 ] 厅 1 了\n户型', 'x', now)[0].layout,
   '2室1厅1卫',
+);
+assert.deepEqual(
+  parseDetailHeroTexts({
+    price: '239 万\n售 价',
+    layout: '2 室 1 厅 1 卫\n户型',
+    area: '/77.03m:\n建筑 面积',
+  }),
+  {
+    price: '239',
+    layout: '2室1厅1卫',
+    area: '77.03',
+    text: '239 万\n售 价\n2 室 1 厅 1 卫\n户型\n/77.03m:\n建筑 面积',
+  },
 );
 console.log(
   'PASS: current screenshot four cards; grouped unit prices; slash/unit variants; no price crossing; discount excluded; unknown layout/date preserved.',
