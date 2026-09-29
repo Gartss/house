@@ -1,4 +1,5 @@
 import { newProperty, Property } from './model';
+import { newId } from './id';
 import { LOCATION_ALIASES, LOCATION_DATA } from './location-data';
 import { localDateValue } from './date';
 // Normalize typography only; never repair uncertain address characters by guessing.
@@ -94,6 +95,37 @@ function reportTitle(lines: string[]) {
   return '';
 }
 function semanticArea(text: string) {
+  const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+  const inline = text.match(
+    /(?:建筑面积|建面|产证面积)[:：]?\s*([\dOoIlS]+(?:[.,][\dOoIlS]+)?)(?:㎡|m(?:[iI²2]|\^2)?|r[rn](?:[iI²2])?)/i,
+  )?.[1];
+  if (inline) {
+    const repaired = inline
+      .replace(/[Oo]/g, '0')
+      .replace(/[Il]/g, '1')
+      .replace(/S/g, '5')
+      .replace(',', '.');
+    if (Number(repaired) >= 10 && Number(repaired) <= 1000) return repaired;
+  }
+  const areaLabel = lines.findIndex((line) => /建筑面积/.test(line));
+  if (areaLabel >= 0) {
+    for (let index = areaLabel + 1; index <= Math.min(lines.length - 1, areaLabel + 2); index += 1) {
+      const candidate = lines[index].match(/^([\dOoIlS]+(?:[.,][\dOoIlS]+)?)(?:㎡|m(?:[iI²2]|\^2)?)?$/i)?.[1];
+      if (!candidate) continue;
+      const repaired = candidate
+        .replace(/[Oo]/g, '0')
+        .replace(/[Il]/g, '1')
+        .replace(/S/g, '5')
+        .replace(',', '.');
+      if (Number(repaired) >= 10 && Number(repaired) <= 1000) return repaired;
+    }
+    for (let index = areaLabel - 1; index >= Math.max(0, areaLabel - 4); index -= 1) {
+      if (/万|元|室|厅|卫/.test(lines[index])) continue;
+      const candidate = lines[index].match(/(\d{2,3}(?:\.\d{1,2})?)(?:㎡|m(?:[iI²2]|\^2)?)?/i)?.[1];
+      if (candidate && Number(candidate) >= 10 && Number(candidate) <= 1000)
+        return candidate;
+    }
+  }
   const labeled = text.match(
     /(?:建筑面积|建面|产证面积|面积)[:：]?[^\dOoIlS\n]{0,12}([\dOoIlS]+(?:[.,][\dOoIlS]+)?)(?:㎡|m(?:[iI²2]|\^2)?|r[rn](?:[iI²2])?)?(?![\dOoIlS.,万])/i,
   )?.[1];
@@ -113,6 +145,46 @@ function semanticArea(text: string) {
   }
   return plausibleArea(text.match(areaPattern)?.[1] || '');
 }
+
+export function parseFloorPlanRoomsFromText(text: string) {
+  const lines = text
+    .normalize('NFKC')
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, '').trim())
+    .filter(Boolean);
+  const roomPattern = /^(厨房|卫生间|卫|客厅|餐厅|卧室|主卧|次卧|阳台|书房|储藏室|过道|玄关)([A-Z\d]?)$/i;
+  const areaPattern = /^(\d{1,2}(?:\.\d{1,2}))(?:㎡|m(?:[iI²2]|\^2)?)?$/i;
+  const rooms: Array<{ id: string; name: string; area: string; included: boolean }> = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const room = lines[index].match(roomPattern);
+    if (!room) continue;
+    let area = '';
+    for (let next = index + 1; next < lines.length; next += 1) {
+      if (roomPattern.test(lines[next])) break;
+      const match = lines[next].match(areaPattern);
+      if (match && Number(match[1]) > 0 && Number(match[1]) <= 80) {
+        area = match[1];
+        break;
+      }
+    }
+    const name = `${room[1]}${room[2] || ''}`;
+    rooms.push({
+      id: newId(),
+      name,
+      area,
+      included: !name.startsWith('阳台'),
+    });
+  }
+  return rooms.filter(
+    (room, index) =>
+      rooms.findIndex((candidate) => candidate.name === room.name) === index,
+  );
+}
+
+export function isListingDocumentText(text: string) {
+  return /房屋总价|基本情况|房源编号/.test(text);
+}
+
 function applySemanticFields(p: Property, text: string, now: Date) {
   p.layout = layoutValue(text) || p.layout;
   p.area = semanticArea(text) || p.area;
@@ -130,7 +202,7 @@ function applySemanticFields(p: Property, text: string, now: Date) {
       .find(Boolean) || p.direction;
   p.decoration = text.match(/(?:精装|简装|毛坯)/)?.[0] || p.decoration;
   p.lift = liftValue(text) || p.lift;
-  p.code = text.match(/房源核验码[:：]?(\d+)/)?.[1] || p.code;
+  p.code = text.match(/房源(?:核验码|编号)\s*[:：]?\s*(\d{8,})/)?.[1] || p.code;
   p.suggestedPrice =
     text.split('\n').map(amount).find(Boolean) || p.suggestedPrice;
   p.unitPrice = unitPrice(text) || p.unitPrice;
