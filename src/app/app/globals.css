@@ -2729,6 +2729,14 @@ body {
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
 }
+.icp-filing {
+  padding: 14px 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.icp-filing a { color: #6e7873; text-decoration: none; }
+.icp-filing a:hover, .icp-filing a:focus-visible { text-decoration: underline; }
 
 /* Shared House select and date controls. */
 .house-select-trigger {

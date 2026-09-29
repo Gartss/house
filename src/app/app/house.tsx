@@ -1033,6 +1033,7 @@ export default function HouseApp() {
                       : '从一张收藏截图开始'}
                   </h2>
                   <p>导入后先核对，缺少的信息可以之后再补。</p>
+                  <footer className="icp-filing"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">沪ICP备2026049438号-1</a></footer>
                 </section>
               ) : (
                 <div className="property-list-scroll">
@@ -1044,6 +1045,7 @@ export default function HouseApp() {
                     setSelected={setSelected}
                     onOpen={open}
                   />
+                  <footer className="icp-filing"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">沪ICP备2026049438号-1</a></footer>
                 </div>
               )}
               <div className="table-meta">
@@ -1201,6 +1203,7 @@ export default function HouseApp() {
                 <button onClick={() => setProfileSheet('about')}><HouseIcon /><span><strong>关于房得 Find</strong><small>{usage ? `已有 ${usage.total} 个浏览器使用` : '版本 1.0 · 看房记录与对比工具'}</small></span><ChevronRight /></button>
               </section>
               {profileSheet && <div className="profile-modal"><button className="profile-scrim" aria-label="关闭" onClick={() => setProfileSheet('')} /><section className="profile-sheet">{profileSheet === 'privacy' ? <><ShieldCheck className="sheet-icon"/><h2>你的数据由你保管</h2><p>房源信息、截图和价格记录默认只保存在这台设备中。房得 Find 不要求注册账号，也不会自动将资料上传到服务器。</p><p>为了了解大概使用人数，房得 Find 会上传一个随机匿名编号和访问日期；不会上传房源、价格、截图或设备身份信息。</p><div className="privacy-points"><span>本地保存</span><span>匿名统计</span></div></> : <><HouseIcon className="sheet-icon"/><h2>房得 Find</h2><p>用于整理看房资料、记录价格变化并对比候选房源。</p>{usage && <div className="about-version"><span>累计使用</span><strong>{usage.total} 个浏览器</strong></div>}{usage && <div className="about-version"><span>今日活跃</span><strong>{usage.activeToday} 个</strong></div>}{usage && <div className="about-version"><span>近 7 日活跃</span><strong>{usage.active7} 个</strong></div>}<div className="about-version"><span>当前版本</span><strong>1.0.0</strong></div></>}<Button variant="outline" onClick={() => setProfileSheet('')}>{profileSheet === 'privacy' ? '我知道了' : '完成'}</Button></section></div>}
+              <footer className="icp-filing"><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">沪ICP备2026049438号-1</a></footer>
             </section>
           )}
         </>
