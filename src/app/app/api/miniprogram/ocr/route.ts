@@ -56,11 +56,26 @@ function isSupported(bytes: Uint8Array) {
 export async function POST(req: Request) {
   const user = await getMiniProgramUser(req);
   if (!user) return Response.json({ error: '微信登录已失效，请重新登录' }, { status: 401 });
-  const data = await req.formData();
-  const file = data.get('file');
-  if (!(file instanceof File))
-    return Response.json({ error: '请选择需要识别的文件' }, { status: 400 });
-  const bytes = new Uint8Array(await file.arrayBuffer());
+  let bytes: Uint8Array;
+  let requestedPage = 0;
+  if ((req.headers.get('content-type') || '').includes('application/json')) {
+    const input = await req.json().catch(() => null) as { fileId?: unknown; page?: unknown } | null;
+    const fileId = String(input?.fileId || '');
+    requestedPage = Number(input?.page);
+    if (!/^[a-f0-9]{64}$/.test(fileId) || !Number.isInteger(requestedPage) || requestedPage < 1)
+      return Response.json({ error: '文件或页码无效' }, { status: 400 });
+    const object = await env.FILES.get(`${user.userId}/${fileId}`);
+    if (!object) return Response.json({ error: '未找到需要识别的文件' }, { status: 404 });
+    if (object.size > maxBytes)
+      return Response.json({ error: '用于识别的文件需小于 7.5MB' }, { status: 413 });
+    bytes = new Uint8Array(await object.arrayBuffer());
+  } else {
+    const data = await req.formData();
+    const file = data.get('file');
+    if (!(file instanceof File))
+      return Response.json({ error: '请选择需要识别的文件' }, { status: 400 });
+    bytes = new Uint8Array(await file.arrayBuffer());
+  }
   if (bytes.byteLength > maxBytes)
     return Response.json({ error: '用于识别的文件需小于 7.5MB' }, { status: 413 });
   const kind = isSupported(bytes);
@@ -70,7 +85,10 @@ export async function POST(req: Request) {
   const pageCount = kind === 'pdf' ? pdfPageCount(bytes) : 1;
   if (pageCount > 50)
     return Response.json({ error: 'PDF 最多支持 50 页' }, { status: 400 });
-  if (!(await consumeOcrAllowance(user.userId, pageCount)))
+  if (requestedPage > pageCount)
+    return Response.json({ error: 'PDF 页码超出范围' }, { status: 400 });
+  const pages = requestedPage ? [requestedPage] : Array.from({ length: pageCount }, (_, index) => index + 1);
+  if (!(await consumeOcrAllowance(user.userId, pages.length)))
     return Response.json(
       { error: '本小时识别次数较多，请稍后再试' },
       { status: 429 },
@@ -80,7 +98,7 @@ export async function POST(req: Request) {
     const texts: string[] = [];
     const requestIds: string[] = [];
     const properties: ReturnType<typeof parseScreenshot> = [];
-    for (let page = 1; page <= pageCount; page += 1) {
+    for (const page of pages) {
       const result = await recognizeWithTencentOcr(
         bytes,
         env.TENCENT_CLOUD_SECRET_ID?.trim() || '',
